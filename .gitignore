@@ -11,13 +11,16 @@ build/
 # Toolchain téléchargée (ne pas versionner)
 go*.linux-amd64.tar.gz
 
-# Médias générés par le pipeline (audio + partitions)
+# Médias téléchargés ou générés par le pipeline : jamais versionnés
+# (poids du repo, et droits d'auteur si le dépôt devient public un jour)
 /data/
-*.mp3
-*.ogg
-*.wav
-*.webm
-*.m4a
+/pipeline/out/
+
+# Audio du client : tout est ignoré SAUF les SFX du jeu, qui sont de vrais
+# assets du produit (quelques Ko) — sans eux, un clone du repo est muet.
+client/public/audio/*
+!client/public/audio/README.md
+!client/public/audio/sfx-*.mp3
 
 # Environnement
 .env
