@@ -155,18 +155,36 @@ body {
   opacity: 0.7;
 }
 
-/* Rappel des touches : disques aux couleurs des notes, touches écrites dedans. */
+/*
+ * Rappel des touches, disposé comme le clavier : D F puis J K, chaque disque
+ * rempli de la couleur des notes qu'il frappe. L'écart entre les mains est plus
+ * large que l'écart entre deux touches d'une même main : c'est ce qui rend la
+ * position des doigts lisible sans l'expliquer.
+ */
 
 .key-legend {
-  --disc-size: 4rem;
-  display: flex;
-  gap: 1.25rem;
+  --disc-size: 3.5rem;
+  --key-gap: 0.5rem;
+  --hand-gap: 2rem;
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
 }
 
-.key-legend__item {
+.key-legend__hands {
+  display: flex;
+  gap: var(--hand-gap);
+}
+
+.key-legend__hand {
   display: grid;
   justify-items: center;
   gap: 0.4rem;
+}
+
+.key-legend__keys {
+  display: flex;
+  gap: var(--key-gap);
 }
 
 .key-legend__disc {
@@ -178,17 +196,37 @@ body {
   /* Texte sombre : lisible aussi bien sur le rouge du DON que sur le bleu du KA. */
   color: var(--color-night);
   font-weight: 800;
-  font-size: calc(var(--disc-size) * 0.28);
-  letter-spacing: 0.05em;
+  font-size: calc(var(--disc-size) * 0.4);
   border: 2px solid color-mix(in srgb, var(--color-white) 70%, transparent);
   box-shadow: 0 0 1.25rem color-mix(in srgb, var(--color-purple) 60%, transparent);
 }
 
-.key-legend__name {
+.key-legend__hand-name {
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.key-legend__types {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.key-legend__type {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   font-size: 0.7rem;
   font-weight: 700;
-  letter-spacing: 0.18em;
-  opacity: 0.65;
+  letter-spacing: 0.15em;
+  opacity: 0.7;
+}
+
+.key-legend__dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
 }
 
 /*
@@ -197,12 +235,19 @@ body {
  * légende suit la piste au lieu de la recouvrir sur les écrans peu hauts.
  */
 .key-legend--floating {
-  --disc-size: 3rem;
+  --disc-size: 2.5rem;
+  --hand-gap: 1.25rem;
   position: absolute;
   left: 1.5rem;
   bottom: calc(var(--lane-top-from-bottom) + 1.5rem);
   pointer-events: none;
   opacity: 0.85;
+}
+
+/* En jeu, seules les couleurs comptent : les libellés seraient du bruit. */
+.key-legend--floating .key-legend__hand-name,
+.key-legend--floating .key-legend__types {
+  display: none;
 }
 
 /* --- Jeu --- */

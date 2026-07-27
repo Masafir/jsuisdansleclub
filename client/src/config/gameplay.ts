@@ -21,6 +21,32 @@ export const KEY_BINDINGS: Record<NoteType, readonly string[]> = {
 };
 
 /**
+ * Disposition physique des touches sur le clavier, main par main et de gauche
+ * à droite : D F  J K.
+ *
+ * Cet ordre ne se déduit pas de KEY_BINDINGS, qui groupe par type de note
+ * (F et J d'un côté, D et K de l'autre) et masque donc le fait que les touches
+ * s'entrelacent. Le rappel des touches à l'écran s'appuie sur cette table pour
+ * refléter le vrai clavier.
+ */
+export const KEY_LAYOUT = [
+  { hand: 'Main gauche', keys: ['d', 'f'] },
+  { hand: 'Main droite', keys: ['j', 'k'] },
+] as const;
+
+/** Table inverse touche -> type de note, dérivée de KEY_BINDINGS. */
+const KEY_TO_NOTE_TYPE = new Map<string, NoteType>(
+  Object.entries(KEY_BINDINGS).flatMap(([type, keys]) =>
+    keys.map((key) => [key, type as NoteType] as const),
+  ),
+);
+
+/** Type de note déclenché par une touche, ou `undefined` si non assignée. */
+export function noteTypeForKey(key: string): NoteType | undefined {
+  return KEY_TO_NOTE_TYPE.get(key.toLowerCase());
+}
+
+/**
  * Fenêtres de jugement, en millisecondes autour du timing idéal de la note.
  * Un écart absolu <= PERFECT_WINDOW_MS vaut PERFECT, sinon <= GOOD_WINDOW_MS
  * vaut GOOD, au-delà c'est MISS.

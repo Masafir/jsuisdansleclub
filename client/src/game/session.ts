@@ -16,10 +16,9 @@ import type { Chart } from '../chart/types';
 import {
   COUNTDOWN,
   HIGHWAY,
-  KEY_BINDINGS,
   musicVolume,
+  noteTypeForKey,
   type Judgement,
-  type NoteType,
 } from '../config/gameplay';
 
 export type SessionStatus = 'idle' | 'countdown' | 'playing' | 'dead' | 'survived';
@@ -33,13 +32,6 @@ export interface SessionSnapshot {
   lastJudgement: Judgement | null;
   songTimeMs: number;
 }
-
-/** Table inverse touche -> type de note, construite depuis la config. */
-const KEY_TO_NOTE_TYPE = new Map<string, NoteType>(
-  Object.entries(KEY_BINDINGS).flatMap(([type, keys]) =>
-    keys.map((key) => [key, type as NoteType] as const),
-  ),
-);
 
 export interface GameSessionOptions {
   chart: Chart;
@@ -118,7 +110,7 @@ export class GameSession {
   handleKey(key: string): void {
     if (this.status !== 'playing') return;
 
-    const type = KEY_TO_NOTE_TYPE.get(key.toLowerCase());
+    const type = noteTypeForKey(key);
     if (!type) return;
 
     const result = this.judge.hit(this.clock.getInputTimeMs(), type);
