@@ -121,11 +121,32 @@ export const CALIBRATION = {
   STORAGE_KEY: 'jsuisdansleclub.calibrationOffsetMs',
 } as const;
 
-/** Volumes des effets sonores, entre 0 et 1. */
-export const SFX = {
-  VOLUME: {
+/**
+ * Table de mixage. Tous les volumes valent entre 0 (muet) et 1 (plein).
+ *
+ * Chaque son est multiplié par MASTER, puis par le volume de sa catégorie :
+ * baisser MASTER baisse tout, sans toucher à l'équilibre entre la musique et
+ * les effets.
+ */
+export const MIX = {
+  /** Volume général, appliqué à tout ce qui sort du jeu. */
+  MASTER: 1,
+  /** Volume du morceau joué. */
+  MUSIC: 0.8,
+  /** Volume de chaque effet sonore, réglable indépendamment. */
+  SFX: {
     PERFECT: 0.8,
     GOOD: 0.6,
     MISS: 0.5,
   } satisfies Record<Judgement, number>,
 } as const;
+
+/** Volume effectif de la musique, une fois le volume général appliqué. */
+export function musicVolume(): number {
+  return MIX.MASTER * MIX.MUSIC;
+}
+
+/** Volume effectif d'un effet sonore, une fois le volume général appliqué. */
+export function sfxVolume(judgement: Judgement): number {
+  return MIX.MASTER * MIX.SFX[judgement];
+}

@@ -5,7 +5,7 @@
  * déclenchés sans latence et pouvoir se superposer.
  */
 
-import { SFX, type Judgement } from '../config/gameplay';
+import { sfxVolume, type Judgement } from '../config/gameplay';
 import { getAudioContext, loadOptionalAudioBuffer } from './loader';
 
 const SFX_URLS: Record<Judgement, string> = {
@@ -37,7 +37,7 @@ export class SfxPlayer {
     source.buffer = buffer;
 
     const gain = ctx.createGain();
-    gain.gain.value = SFX.VOLUME[judgement];
+    gain.gain.value = sfxVolume(judgement);
 
     source.connect(gain).connect(ctx.destination);
     source.start();

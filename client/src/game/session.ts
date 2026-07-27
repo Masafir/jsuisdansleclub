@@ -17,6 +17,7 @@ import {
   COUNTDOWN,
   HIGHWAY,
   KEY_BINDINGS,
+  musicVolume,
   type Judgement,
   type NoteType,
 } from '../config/gameplay';
@@ -98,7 +99,14 @@ export class GameSession {
 
     this.source = ctx.createBufferSource();
     this.source.buffer = buffer;
-    this.source.connect(ctx.destination);
+
+    // Le morceau passe par un GainNode plutôt que d'attaquer la sortie en
+    // direct : c'est ce qui rend son volume réglable, et plus tard automatisable
+    // (fondu à la mort du joueur, atténuation pendant un taunt…).
+    const musicGain = ctx.createGain();
+    musicGain.gain.value = musicVolume();
+    this.source.connect(musicGain).connect(ctx.destination);
+
     this.source.start(startAtSec);
 
     this.clock.start(startAtSec);
