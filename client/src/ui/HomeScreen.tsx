@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Chart } from '../chart/types';
-import { KEY_BINDINGS } from '../config/gameplay';
+import { KeyLegend } from './KeyLegend';
 
 interface HomeScreenProps {
   library: readonly Chart[];
@@ -56,10 +56,7 @@ export function HomeScreen({ library, onPlay }: HomeScreenProps) {
         </ul>
       </section>
 
-      <footer className="keys">
-        DON&nbsp;: {KEY_BINDINGS.DON.join(' / ').toUpperCase()} — KA&nbsp;:{' '}
-        {KEY_BINDINGS.KA.join(' / ').toUpperCase()}
-      </footer>
+      <KeyLegend />
     </main>
   );
 }

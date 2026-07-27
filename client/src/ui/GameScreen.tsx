@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { HighwayRenderer } from '../render/highway';
 import { GameSession, type SessionSnapshot } from '../game/session';
-import { CALIBRATION, SURVIVAL } from '../config/gameplay';
+import { CALIBRATION, HIGHWAY, SURVIVAL } from '../config/gameplay';
 import type { Chart } from '../chart/types';
 import { Hud } from './Hud';
+import { KeyLegend } from './KeyLegend';
 
 interface GameScreenProps {
   chart: Chart;
@@ -83,9 +84,19 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
     };
   }, [chart]);
 
+  // Hauteur du bord supérieur de la piste, mesurée depuis le bas de l'écran :
+  // la légende s'y accroche pour ne jamais recouvrir les notes, quelle que soit
+  // la taille de la fenêtre.
+  const laneTopFromBottom = `${(1 - HIGHWAY.LANE_Y_RATIO + HIGHWAY.LANE_HEIGHT_RATIO / 2) * 100}%`;
+
   return (
-    <main className="screen screen--game">
+    <main
+      className="screen screen--game"
+      style={{ '--lane-top-from-bottom': laneTopFromBottom } as CSSProperties}
+    >
       <div className="canvas-host" ref={canvasHost} />
+
+      <KeyLegend variant="floating" />
 
       {snapshot && snapshot.status !== 'countdown' && (
         <Hud

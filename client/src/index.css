@@ -155,10 +155,54 @@ body {
   opacity: 0.7;
 }
 
-.keys {
-  font-size: 0.85rem;
-  opacity: 0.6;
-  letter-spacing: 0.08em;
+/* Rappel des touches : disques aux couleurs des notes, touches écrites dedans. */
+
+.key-legend {
+  --disc-size: 4rem;
+  display: flex;
+  gap: 1.25rem;
+}
+
+.key-legend__item {
+  display: grid;
+  justify-items: center;
+  gap: 0.4rem;
+}
+
+.key-legend__disc {
+  width: var(--disc-size);
+  height: var(--disc-size);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  /* Texte sombre : lisible aussi bien sur le rouge du DON que sur le bleu du KA. */
+  color: var(--color-night);
+  font-weight: 800;
+  font-size: calc(var(--disc-size) * 0.28);
+  letter-spacing: 0.05em;
+  border: 2px solid color-mix(in srgb, var(--color-white) 70%, transparent);
+  box-shadow: 0 0 1.25rem color-mix(in srgb, var(--color-purple) 60%, transparent);
+}
+
+.key-legend__name {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  opacity: 0.65;
+}
+
+/*
+ * Épinglée juste au-dessus de la piste, du côté de la ligne de jugement.
+ * `--lane-top-from-bottom` est calculée depuis la config par GameScreen : la
+ * légende suit la piste au lieu de la recouvrir sur les écrans peu hauts.
+ */
+.key-legend--floating {
+  --disc-size: 3rem;
+  position: absolute;
+  left: 1.5rem;
+  bottom: calc(var(--lane-top-from-bottom) + 1.5rem);
+  pointer-events: none;
+  opacity: 0.85;
 }
 
 /* --- Jeu --- */
