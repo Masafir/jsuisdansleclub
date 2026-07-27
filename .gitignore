@@ -1,0 +1,29 @@
+# Dépendances
+node_modules/
+.venv/
+__pycache__/
+
+# Builds
+dist/
+build/
+*.exe
+
+# Toolchain téléchargée (ne pas versionner)
+go*.linux-amd64.tar.gz
+
+# Médias générés par le pipeline (audio + partitions)
+/data/
+*.mp3
+*.ogg
+*.wav
+*.webm
+*.m4a
+
+# Environnement
+.env
+.env.local
+
+# Éditeurs / OS
+.vscode/
+.idea/
+.DS_Store
