@@ -135,9 +135,9 @@ export const MIX = {
   MUSIC: 0.8,
   /** Volume de chaque effet sonore, réglable indépendamment. */
   SFX: {
-    PERFECT: 0.8,
-    GOOD: 0.6,
-    MISS: 0.5,
+    PERFECT: 0.07,
+    GOOD: 0.05,
+    MISS: 0.07,
   } satisfies Record<Judgement, number>,
 } as const;
 

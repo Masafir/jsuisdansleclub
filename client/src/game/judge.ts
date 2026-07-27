@@ -71,7 +71,36 @@ export class Judge {
     //        - sinon (dans la fenêtre candidate mais trop loin) -> 'MISS'
     //
     //   5. Renvoyer { note, judgement, deltaMs }.
-    throw new Error('TODO(amiral): Judge.hit');
+    const candidateNote = this.notes[this.cursor];
+    
+    if(this.isFinished) {
+      return null;
+    }
+
+    const deltaMs = inputTimeMs - candidateNote.timeMs;
+    
+    if(Math.abs(deltaMs) > TIMING.CANDIDATE_WINDOW_MS) {
+      return null;
+    }
+    else {
+      this.cursor++;
+      let judgement: Judgement;
+
+      if(type !== candidateNote.type) {
+        judgement = 'MISS';
+      }
+      else if(Math.abs(deltaMs) <= TIMING.PERFECT_WINDOW_MS) {
+        judgement = 'PERFECT';
+      }
+      else if(Math.abs(deltaMs) <= TIMING.GOOD_WINDOW_MS) {
+        judgement = 'GOOD';
+      }
+      else {
+        judgement = 'MISS';
+      }
+
+      return { note: candidateNote, judgement, deltaMs };
+    }
   }
 
   /**
@@ -95,7 +124,13 @@ export class Judge {
     //   expirer dans la même image si le joueur lâche son clavier.
     //
     //   Renvoyer le tableau des notes ratées.
-    throw new Error('TODO(amiral): Judge.update');
+    const missedNotes: Note[] = [];
+    
+    while(!this.isFinished && (songTimeMs - this.notes[this.cursor].timeMs > TIMING.GOOD_WINDOW_MS)) {
+      missedNotes.push(this.notes[this.cursor]);
+      this.cursor++;
+    }
+    return missedNotes;
   }
 
   /**

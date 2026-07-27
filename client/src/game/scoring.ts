@@ -52,7 +52,11 @@ export class ScoreTracker {
     // TODO(amiral):
     //   - si aucune note n'a été jugée (this.judgedCount === 0), renvoyer 1 ;
     //   - sinon (PERFECT + GOOD) / judgedCount.
-    throw new Error('TODO(amiral): ScoreTracker.successRatio');
+    if (this.judgedCount === 0) {
+      return 1;
+    }
+    const successCount = this._counts.PERFECT + this._counts.GOOD;
+    return successCount / this.judgedCount;
   }
 
   get judgedCount(): number {
@@ -73,7 +77,18 @@ export class ScoreTracker {
     //        - PERFECT et GOOD l'incrémentent, et mettent à jour this._maxCombo.
     //   3. Ajouter au score : SCORING.POINTS[judgement] * this.multiplier,
     //      arrondi avec Math.round (on veut un score entier).
-    throw new Error('TODO(amiral): ScoreTracker.register');
+    this._counts[judgement]++;
+
+    if (judgement === 'MISS') {
+      this._combo = 0;
+    } else {
+      this._combo++;
+      this._maxCombo = Math.max(this._maxCombo, this._combo);
+    }
+    
+    const points = SCORING.POINTS[judgement] * this.multiplier;
+    
+    this._score += Math.round(points);
   }
 
   get state(): ScoreState {
@@ -119,5 +134,9 @@ export function isPlayerDead(
   //      songTimeMs >= durationMs * SURVIVAL.GRACE_PERIOD_RATIO
   //   3. Ratio insuffisant :
   //      tracker.successRatio < SURVIVAL.MIN_SUCCESS_RATIO
-  throw new Error('TODO(amiral): isPlayerDead');
+  const enoughJudged = tracker.judgedCount >= SURVIVAL.MIN_JUDGED_NOTES;
+  const gracePeriodOver = songTimeMs >= durationMs * SURVIVAL.GRACE_PERIOD_RATIO;
+  const belowThreshold = tracker.successRatio < SURVIVAL.MIN_SUCCESS_RATIO;
+  
+  return enoughJudged && gracePeriodOver && belowThreshold;
 }

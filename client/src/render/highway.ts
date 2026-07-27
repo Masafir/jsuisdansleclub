@@ -100,7 +100,9 @@ export class HighwayRenderer {
     //
     //   Vérifie mentalement : remainingMs = 0 doit donner judgeLineX, et
     //   remainingMs = APPROACH_TIME_MS doit donner this.width.
-    throw new Error('TODO(amiral): HighwayRenderer.noteX');
+    const remainingMs = note.timeMs - songTimeMs;
+    const speed = (this.width - this.judgeLineX) / HIGHWAY.APPROACH_TIME_MS;
+    return this.judgeLineX + remainingMs * speed;
   }
 
   /** Dessine les notes visibles à leur position courante. */
@@ -185,7 +187,22 @@ export class HighwayRenderer {
     //
     //   Astuce : le plus simple est de reconstruire this.pulses avec un filter,
     //   en détruisant au passage les graphics des pulsations expirées.
-    throw new Error('TODO(amiral): HighwayRenderer.updatePulses');
+    const remainingPulses = this.pulses.filter((pulse) => {
+      const progress = (songTimeMs - pulse.startedAtMs) / FEEDBACK.PULSE_DURATION_MS;
+      
+      if (progress >= 1) {
+        pulse.graphic.destroy();
+        return false;
+      }
+
+      const scale = 1 + progress * (FEEDBACK.PULSE_MAX_SCALE - 1);
+      pulse.graphic.scale.set(scale);
+      pulse.graphic.alpha =FEEDBACK.PULSE_START_ALPHA * (1 - progress);
+      
+        return true;
+    });
+    
+    this.pulses = remainingPulses;
   }
 
   /** Vide la scène entre deux parties. */
