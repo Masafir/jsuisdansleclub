@@ -39,7 +39,9 @@ export class ScoreTracker {
     // TODO(amiral): calculer le multiplicateur à partir de this._combo.
     //   Utiliser Math.floor pour le nombre de paliers atteints, et Math.min
     //   contre SCORING.MAX_MULTIPLIER pour le plafond.
-    throw new Error('TODO(amiral): ScoreTracker.multiplier');
+    const comboStep = Math.floor(this._combo / SCORING.COMBO_STEP);
+    const multiplier = 1 + comboStep * SCORING.COMBO_BONUS_PER_STEP;
+    return Math.min(multiplier, SCORING.MAX_MULTIPLIER);
   }
 
   /**

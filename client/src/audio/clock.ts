@@ -51,7 +51,8 @@ export class SongClock {
   start(atTimeSec: number, startOffsetMs = 0): void {
     // TODO(amiral): mémoriser `atTimeSec` et `startOffsetMs` dans les champs
     // `startTimeSec` et `startOffsetMs`. Deux lignes, c'est tout.
-    throw new Error('TODO(amiral): SongClock.start');
+    this.startTimeSec = atTimeSec;
+    this.startOffsetMs = startOffsetMs;
   }
 
   /** L'horloge a-t-elle reçu un ordre de départ ? */
@@ -73,7 +74,12 @@ export class SongClock {
     //   1. Si `this.startTimeSec` est null, lever une ClockNotStartedError.
     //   2. Sinon : temps écoulé = this.now() - this.startTimeSec  (en SECONDES,
     //      donc à convertir en millisecondes), auquel on ajoute startOffsetMs.
-    throw new Error('TODO(amiral): SongClock.getSongTimeMs');
+    if (this.startTimeSec === null) {
+      throw new ClockNotStartedError();
+    }
+
+    const elapsedMs = (this.now() - this.startTimeSec) * 1000;
+    return elapsedMs + this.startOffsetMs;
   }
 
   /**
@@ -90,7 +96,11 @@ export class SongClock {
   getInputTimeMs(): number {
     // TODO(amiral): renvoyer getSongTimeMs() corrigé de this.calibrationOffsetMs
     // (relis le paragraphe ci-dessus pour le signe).
-    throw new Error('TODO(amiral): SongClock.getInputTimeMs');
+    if(!this.isStarted) {
+      throw new ClockNotStartedError();
+    }
+    const cleanedInputTime = this.getSongTimeMs() - this.calibrationOffsetMs;
+    return cleanedInputTime;
   }
 
   /** Remet l'horloge à l'état initial (retour au menu, rejouer). */

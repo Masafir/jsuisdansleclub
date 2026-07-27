@@ -16,3 +16,4 @@ Contexte produit : `CONTEXT.MD`. Décisions techniques actées : `DECISIONS.md` 
 5. **Ne jamais réécrire le code d'amiral sans accord.** Si une amélioration est possible : la signaler et l'expliquer. Une review demandée = expliquer et suggérer, pas réécrire.
 6. **Expliquer le pourquoi** des choix non évidents, brièvement, au moment où ils sont faits.
 7. **Langue** : français pour les docs, discussions et messages de commit ; anglais pour les identifiants de code.
+8. **Git** : branches nommées `<type>/<description-en-kebab-case>` (`feat/`, `fix/`, `chore/`, `refactor/`, `docs/`), messages de commit en Conventional Commits (`feat(client): …`). `main` reste propre : le travail se fait sur une branche.
