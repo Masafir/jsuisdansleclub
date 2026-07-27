@@ -22,6 +22,11 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
   const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Passer par une ref évite que l'effet ne dépende de l'identité du callback :
+  // sans ça, un simple re-rendu du parent relancerait la partie depuis le début.
+  const onFinishedRef = useRef(onFinished);
+  onFinishedRef.current = onFinished;
+
   useEffect(() => {
     const host = canvasHost.current;
     if (!host) return;
@@ -36,21 +41,29 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
       session?.handleKey(event.key);
     };
 
-    (async () => {
+    void (async () => {
       try {
-        renderer = new HighwayRenderer();
-        await renderer.init(host);
-        if (cancelled) return;
+        const created = new HighwayRenderer();
+        await created.init(host);
+        // React StrictMode démonte puis remonte systématiquement les composants
+        // en développement : l'initialisation de Pixi peut donc se terminer
+        // alors que l'écran n'existe plus. Sans ce garde, un second canvas
+        // resterait accroché au DOM.
+        if (cancelled) {
+          created.destroy();
+          return;
+        }
+        renderer = created;
 
         session = new GameSession({
           chart,
-          renderer,
+          renderer: created,
           calibrationOffsetMs: readCalibrationOffsetMs(),
           onSnapshot: (next) => {
             setSnapshot(next);
             if (!finished && (next.status === 'dead' || next.status === 'survived')) {
               finished = true;
-              onFinished(next);
+              onFinishedRef.current(next);
             }
           },
         });
@@ -68,7 +81,7 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
       session?.stop();
       renderer?.destroy();
     };
-  }, [chart, onFinished]);
+  }, [chart]);
 
   return (
     <main className="screen screen--game">

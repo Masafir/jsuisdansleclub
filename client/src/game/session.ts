@@ -61,6 +61,8 @@ export class GameSession {
   private frameHandle: number | null = null;
   private status: SessionStatus = 'idle';
   private lastJudgement: Judgement | null = null;
+  /** Passe à true dès `stop()` : empêche un démarrage tardif après démontage. */
+  private disposed = false;
 
   constructor(options: GameSessionOptions) {
     this.chart = options.chart;
@@ -86,6 +88,9 @@ export class GameSession {
       loadAudioBuffer(this.chart.audioUrl),
       this.sfx.load(),
     ]);
+    // La partie a pu être abandonnée pendant le chargement : sans ce garde, le
+    // morceau se lancerait dans le vide après le retour au menu.
+    if (this.disposed) return;
 
     const ctx = getAudioContext();
     const countdownMs = COUNTDOWN.STEPS * COUNTDOWN.STEP_DURATION_MS;
@@ -160,6 +165,7 @@ export class GameSession {
   }
 
   stop(): void {
+    this.disposed = true;
     if (this.frameHandle !== null) cancelAnimationFrame(this.frameHandle);
     this.frameHandle = null;
     try {

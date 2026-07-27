@@ -8,9 +8,14 @@
 
 import { CHART_FORMAT_VERSION, type Chart, type Note } from './types';
 
-const TEST_BPM = 120;
-const TEST_DURATION_MS = 60_000;
-const TEST_OFFSET_MS = 0;
+/**
+ * Valeurs calées sur le `test-song.mp3` actuel, estimées par autocorrélation de
+ * l'enveloppe d'énergie (la méthode que le pipeline Python industrialisera).
+ * À réajuster à l'oreille si la grille dérive, ou en changeant de morceau.
+ */
+const TEST_BPM = 135;
+const TEST_DURATION_MS = 174_000;
+const TEST_OFFSET_MS = 20;
 /** Nombre de temps par mesure (4/4). */
 const BEATS_PER_BAR = 4;
 /** Une mesure sur deux reçoit des contretemps. */
@@ -37,7 +42,7 @@ function buildTestNotes(): Note[] {
 
 export const TEST_CHART: Chart = {
   version: CHART_FORMAT_VERSION,
-  title: 'Test — 120 BPM',
+  title: `Morceau de test — ${TEST_BPM} BPM`,
   audioUrl: '/audio/test-song.mp3',
   durationMs: TEST_DURATION_MS,
   bpm: TEST_BPM,
