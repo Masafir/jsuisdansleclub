@@ -12,6 +12,39 @@ Jeu de rythme multijoueur en ligne dans le navigateur (voir CONTEXT.MD pour la v
 | Audio client | **Web Audio API** — `AudioContext.currentTime` est l'horloge maîtresse du gameplay | Seule horloge assez précise ; jamais `Date.now()`/`requestAnimationFrame` pour juger les hits |
 | Pipeline partitions | **Service Python** : `yt-dlp` (téléchargement audio YouTube) + `librosa` (beat tracking / détection d'onsets) → génère la partition (JSON) | Expérience cible dès le MVP : coller une URL YouTube |
 
+## Gameplay retenu (27 juil. 2026)
+
+**Format Taiko** : une seule lane horizontale, les notes défilent de droite à gauche vers une ligne de jugement fixe. Deux types de notes : `DON` (centre, touches F/J) et `KA` (bord, touches D/K).
+
+Pourquoi plutôt que 4 lanes verticales (DDR/osu!mania) ou un chemin façon *A Dance of Fire and Ice* :
+- Une bande horizontale libère tout l'écran pour les **danseurs**, qui sont le cœur social du jeu. Des lanes verticales mangent l'espace, surtout à plusieurs joueurs.
+- Rendu le plus simple : un seul axe, un seul point de jugement.
+- La **génération auto** s'y prête : un onset = une note, le type se déduit d'une heuristique simple (accent/downbeat vs contretemps). ADOFAI repose sur des partitions dessinées à la main → incompatible avec la génération depuis un MP3, qui est la feature signature du projet.
+- Deux touches restent accessibles à des joueurs non initiés.
+
+Fenêtres de jugement : ±40 ms `PERFECT`, ±90 ms `GOOD`, au-delà `MISS`.
+
+## Scénario du MVP
+
+1. Écran d'accueil : champ pour coller une **URL YouTube**, ou choix d'un morceau dans la **bibliothèque** locale.
+2. Chargement : téléchargement + décodage de l'audio, génération de la partition.
+3. **Décompte 3 / 2 / 1**, puis lancement du son.
+4. Le joueur joue.
+5. **Règle de survie** (« danse mortelle ») : le ratio de réussite doit rester ≥ 50 %. La vérification est **continue mais activée seulement après le premier tiers du morceau** (période de grâce : sans elle, un raté sur les premières notes tuerait immédiatement).
+   - Ratio < seuil après la grâce → **Game over**, le morceau s'arrête.
+   - Ratio ≥ seuil jusqu'au bout → **« Bravo, vous avez survécu à la danse mortelle »**.
+6. Écran de stats, avec possibilité de rejouer le morceau ou d'en choisir un autre.
+
+## Règles de code
+
+- **AUCUN magic number.** Toutes les valeurs de gameplay (fenêtres de jugement, points, combo, seuil de survie, période de grâce, vitesse de défilement, durées d'animation, décompte) sont centralisées dans `client/src/config/gameplay.ts`. Les couleurs et gradients dans `client/src/config/theme.ts`. Aucune constante numérique en dur ailleurs dans le code.
+
+## Feedback joueur (MVP)
+
+- **Pulsations lumineuses** à chaque appui : rouge = échec, vert = réussite, arc-en-ciel = parfait.
+- **3 SFX courts** : réussite, échec, parfait (fournis par amiral, déposés dans `client/public/audio/`).
+- Direction artistique : **ambiance disco**, gradients rose / orange / rouge / violet / bleu.
+
 ## Principes d'architecture (découlent de la nature du jeu)
 
 1. **La détection de hit est 100 % locale.** Le client juge chaque hit contre son horloge audio et envoie le résultat (score/combo) au serveur. Le serveur ne valide pas les hits en temps réel (anticheat = problème post-MVP).

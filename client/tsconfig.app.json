@@ -16,9 +16,11 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting */
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    /* Linting — les variables inutilisées sont signalées par oxlint plutôt que
+       par tsc, pour que le build ne casse pas tant que les TODO(amiral) ne sont
+       pas remplis (leurs paramètres sont forcément inutilisés d'ici là). */
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
