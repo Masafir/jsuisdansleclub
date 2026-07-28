@@ -10,17 +10,23 @@ savoir si un reglage de config.py va dans le bon sens.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 from . import chart as chart_module
 from . import config
 
 
 def slugify(name: str) -> str:
-    """Nom de fichier sur, derive d'un titre."""
-    kept = [c.lower() if c.isalnum() else "-" for c in name]
-    return "".join(kept).strip("-").replace("---", "-").replace("--", "-")
+    """Nom de fichier sur, derive d'un titre.
+
+    Les titres viennent souvent de noms de fichiers du genre
+    « Cody Currie - No Ice », donc pleins d'espaces et de tirets : on ecrase
+    toute suite de caracteres non alphanumeriques en un seul tiret.
+    """
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
 def summarize(chart: dict) -> str:
@@ -56,9 +62,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Fichier introuvable : {audio_path}", file=sys.stderr)
         return 1
 
+    # Sans --title, le nom du fichier fait le titre : « Cody Currie - No Ice.mp3 »
+    # donne « Cody Currie - No Ice ».
     title = args.title or audio_path.stem
+
     # Le client sert public/ a la racine : public/audio/x.mp3 devient /audio/x.mp3.
-    audio_url = f"/audio/{audio_path.name}"
+    # `quote` encode les espaces et accents des noms de fichiers, sans quoi l'URL
+    # serait invalide.
+    audio_url = f"/audio/{quote(audio_path.name)}"
 
     chart = chart_module.generate_chart(str(audio_path), title, audio_url)
 

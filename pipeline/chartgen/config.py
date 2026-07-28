@@ -4,6 +4,8 @@ Meme regle que cote client : aucun magic number ailleurs dans le code. C'est ce
 fichier qu'on touche pour equilibrer une partition, pas les algorithmes.
 """
 
+from pathlib import Path
+
 # --- Analyse audio ---------------------------------------------------------
 
 #: Frequence d'echantillonnage de travail. 22050 Hz suffit largement : on
@@ -50,5 +52,11 @@ MIN_NOTE_GAP_S = 0.12
 #: Doit rester aligne sur CHART_FORMAT_VERSION dans client/src/chart/types.ts.
 CHART_FORMAT_VERSION = 1
 
+#: Racine du depot, deduite de l'emplacement de ce fichier :
+#: chartgen/config.py -> chartgen -> pipeline -> racine.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 #: Dossier ou le client va chercher les partitions generees.
-CLIENT_CHARTS_DIR = "client/public/charts"
+#: Chemin absolu, et pas relatif : la CLI doit ecrire au bon endroit quel que
+#: soit le dossier depuis lequel on la lance.
+CLIENT_CHARTS_DIR = REPO_ROOT / "client" / "public" / "charts"

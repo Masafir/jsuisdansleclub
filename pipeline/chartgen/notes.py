@@ -43,7 +43,17 @@ def enforce_min_gap(times: list[float], min_gap_s: float) -> list[float]:
 
     Tests : `test_notes.py::TestEnforceMinGap`
     """
-    raise NotImplementedError("TODO(amiral): enforce_min_gap")
+    # Sortie immediate sur liste vide : le deballage ci-dessous echouerait
+    # avant meme qu'un garde place apres lui puisse s'appliquer.
+    if not times:
+        return []
+
+    first, *rest = times
+    result = [first]
+    for t in rest:
+        if t - result[-1] >= min_gap_s:
+            result.append(t)
+    return result
 
 
 def classify_note_type(
@@ -74,7 +84,10 @@ def classify_note_type(
 
     Tests : `test_notes.py::TestClassifyNoteType`
     """
-    raise NotImplementedError("TODO(amiral): classify_note_type")
+    if high_energy > low_energy * ka_ratio:
+        return "KA"
+    else:
+        return "DON"
 
 
 def times_to_notes(
@@ -106,4 +119,10 @@ def times_to_notes(
 
     Tests : `test_notes.py::TestTimesToNotes`
     """
-    raise NotImplementedError("TODO(amiral): times_to_notes")
+    if len(times) != len(types):
+        raise ValueError(f"Aie coup dur times et types ne sont pas de la même longueur: {len(times)} != {len(types)}")
+    notes = []
+    for t, note_type in zip(times, types):
+        times_ms = round(t * 1000) + offset_ms
+        notes.append({"timeMs": times_ms, "type": note_type})
+    return sorted(notes, key=lambda note: note["timeMs"])  
