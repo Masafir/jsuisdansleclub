@@ -9,9 +9,12 @@ import numpy as np
 from chartgen import config
 from chartgen.analysis import (
     detect_onset_times,
+    find_accent_beats,
     onset_envelope,
     onset_envelopes_by_band,
+    onsets_per_beat,
     quantize_to_grid,
+    variable_grid,
 )
 
 
@@ -122,6 +125,97 @@ class TestQuantizeToGrid:
         times = [0.317, 0.35]
         quantize_to_grid(times, self.GRID, 0.03)
         assert times == [0.317, 0.35]
+
+
+class TestOnsetsPerBeat:
+    BEATS = [0.0, 1.0, 2.0, 3.0]
+
+    def test_moins_de_deux_temps(self):
+        assert onsets_per_beat([0.5], []) == []
+        assert onsets_per_beat([0.5], [0.0]) == [0.0]
+
+    def test_compte_les_attaques_de_chaque_temps(self):
+        onsets = [0.1, 0.5, 1.2, 2.1, 2.4, 2.7]
+        counts = onsets_per_beat(onsets, self.BEATS)
+        # 2 sur le premier temps, 1 sur le deuxieme, 3 sur le troisieme.
+        assert counts[:3] == [2.0, 1.0, 3.0]
+
+    def test_borne_basse_incluse_borne_haute_exclue(self):
+        assert onsets_per_beat([1.0], self.BEATS)[:2] == [0.0, 1.0]
+
+    def test_aucune_attaque(self):
+        assert onsets_per_beat([], self.BEATS)[:3] == [0.0, 0.0, 0.0]
+
+    def test_une_valeur_par_temps(self):
+        assert len(onsets_per_beat([0.5, 1.5], self.BEATS)) == len(self.BEATS)
+
+
+class TestFindAccentBeats:
+    def test_liste_vide(self):
+        assert find_accent_beats([]) == set()
+
+    def test_intensite_uniforme_aucun_accent(self):
+        assert find_accent_beats([5.0] * 32) == set()
+
+    def test_un_pic_isole_est_un_accent(self):
+        strengths = [5.0] * 32
+        strengths[16] = 50.0
+        assert 16 in find_accent_beats(strengths)
+
+    def test_un_pic_modeste_n_est_pas_un_accent(self):
+        # 1.2x la mediane, sous le ratio de 1.6 : c'est du bruit, pas un fill.
+        strengths = [5.0] * 32
+        strengths[16] = 6.0
+        assert find_accent_beats(strengths) == set()
+
+    def test_comparaison_locale_et_non_globale(self):
+        # Un couplet faible puis un refrain fort. Le fill du couplet (indice 8)
+        # est moins intense que le refrain, mais il ressort de SON voisinage :
+        # il doit etre detecte, et le refrain ne doit pas l'etre en entier.
+        strengths = [2.0] * 32 + [20.0] * 32
+        strengths[8] = 8.0
+
+        accents = find_accent_beats(strengths, window=16)
+
+        assert 8 in accents
+        assert 40 not in accents
+
+    def test_ratio_eleve_rend_les_accents_plus_rares(self):
+        strengths = [5.0] * 32
+        for index in (8, 16, 24):
+            strengths[index] = 9.0
+
+        permissif = find_accent_beats(strengths, ratio=1.2)
+        severe = find_accent_beats(strengths, ratio=3.0)
+
+        assert len(severe) < len(permissif)
+
+
+class TestVariableGrid:
+    BEATS = [0.0, 0.5, 1.0, 1.5]
+
+    def test_moins_de_deux_temps(self):
+        assert variable_grid([], set()) == []
+        assert variable_grid([0.4], set()) == [0.4]
+
+    def test_sans_accent_grille_reguliere_en_croches(self):
+        grid = variable_grid(self.BEATS, set(), base_subdivisions=2)
+        assert grid == [0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5]
+
+    def test_un_intervalle_accentue_est_subdivise_plus_finement(self):
+        grid = variable_grid(
+            self.BEATS, {1}, base_subdivisions=2, accent_subdivisions=4
+        )
+        # Intervalle 0 en croches, intervalle 1 en doubles, intervalle 2 en croches.
+        assert grid == [0.0, 0.25, 0.5, 0.625, 0.75, 0.875, 1.0, 1.25, 1.5]
+
+    def test_grille_toujours_croissante(self):
+        grid = variable_grid(self.BEATS, {0, 2}, base_subdivisions=2)
+        assert grid == sorted(grid)
+
+    def test_le_dernier_temps_est_toujours_present(self):
+        grid = variable_grid(self.BEATS, set())
+        assert grid[-1] == self.BEATS[-1]
 
 
 class TestDetectOnsetTimes:

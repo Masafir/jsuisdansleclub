@@ -254,6 +254,95 @@ def beat_grid(
     return grid
 
 
+def beat_times(samples: np.ndarray, sample_rate: int) -> list[float]:
+    """Position des temps du morceau, en secondes."""
+    _tempo, times = librosa.beat.beat_track(
+        y=samples, sr=sample_rate, hop_length=config.HOP_LENGTH, units="time"
+    )
+    return [float(t) for t in times]
+
+
+def onsets_per_beat(onset_times: list[float], beats: list[float]) -> list[float]:
+    """Nombre d'attaques detectees sur chaque temps.
+
+    C'est **le compte** qui revele un moment fort, et non l'energie. Mesure a
+    l'appui : sommer l'energie par temps ne detectait qu'un seul moment fort sur
+    225 dans un morceau de rock, parce qu'une batterie qui joue en continu
+    delivre a peu pres la meme energie a chaque temps. Un roulement, lui, ne
+    frappe pas plus fort : il frappe plus souvent.
+    """
+    if len(beats) < 2:
+        return [0.0] * len(beats)
+
+    counts: list[float] = []
+    for start, end in zip(beats[:-1], beats[1:]):
+        counts.append(float(sum(1 for t in onset_times if start <= t < end)))
+
+    # Le dernier temps n'a pas de suivant : on lui prete le compte du precedent.
+    counts.append(counts[-1])
+    return counts
+
+
+def find_accent_beats(
+    strengths: list[float],
+    ratio: float = config.ACCENT_RATIO,
+    window: int = config.ACCENT_WINDOW_BEATS,
+) -> set[int]:
+    """Indices des temps qui sortent du lot : roulements, relances, refrains.
+
+    La comparaison est **locale** et non globale. Un seuil global marquerait tout
+    le refrain comme un long moment fort et laisserait les couplets entierement
+    plats, alors qu'on veut des accents dans les deux — un fill de couplet doit
+    ressortir de son couplet.
+
+    On compare donc chaque temps a la mediane de son voisinage. La mediane, et
+    non la moyenne : un seul pic tres fort tirerait la moyenne vers le haut et
+    masquerait les accents voisins, alors que la mediane ignore les extremes.
+    """
+    if not strengths:
+        return set()
+
+    half = max(1, window // 2)
+    accents: set[int] = set()
+
+    for index, strength in enumerate(strengths):
+        start = max(0, index - half)
+        end = min(len(strengths), index + half + 1)
+        local_median = float(np.median(strengths[start:end]))
+        if local_median > 0 and strength > local_median * ratio:
+            accents.add(index)
+
+    return accents
+
+
+def variable_grid(
+    beats: list[float],
+    accent_beats: set[int],
+    base_subdivisions: int = config.BEAT_SUBDIVISIONS,
+    accent_subdivisions: int = config.ACCENT_SUBDIVISIONS,
+) -> list[float]:
+    """Grille dont la finesse varie : croches en regime normal, doubles sur les
+    moments forts.
+
+    C'est la traduction directe de ce que fait un charter humain : couplet en
+    croches, roulement en doubles-croches au moment du fill. Le groove reste
+    anticipable et les relances redeviennent jouables.
+    """
+    if len(beats) < 2:
+        return list(beats)
+
+    grid: list[float] = []
+    for index, (start, end) in enumerate(zip(beats[:-1], beats[1:])):
+        subdivisions = (
+            accent_subdivisions if index in accent_beats else base_subdivisions
+        )
+        step = (end - start) / subdivisions
+        grid.extend(start + i * step for i in range(subdivisions))
+
+    grid.append(beats[-1])
+    return grid
+
+
 def grid_tolerance_s(
     grid: list[float], ratio: float = config.QUANTIZE_TOLERANCE_RATIO
 ) -> float:
@@ -274,6 +363,20 @@ def strength_at(
         for time_s in times
     ]
     return [float(envelope[frame]) for frame in frames]
+
+
+def normalized_strength_at(
+    envelope: np.ndarray, times: list[float], sample_rate: int
+) -> list[float]:
+    """Intensites ramenees a l'echelle propre de leur bande.
+
+    Chaque bande a son niveau habituel : le grave d'un morceau peut etre deux
+    fois plus energique que l'aigu sans qu'aucun de ses coups ne soit un accent.
+    Diviser par l'ecart-type de la bande repond a la seule question qui compte
+    pour arbitrer : « ce coup est-il exceptionnel *pour cette bande* ? »
+    """
+    scale = float(envelope.std()) or 1.0
+    return [value / scale for value in strength_at(envelope, times, sample_rate)]
 
 
 def estimate_tempo(samples: np.ndarray, sample_rate: int) -> float:

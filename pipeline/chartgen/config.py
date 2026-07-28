@@ -58,14 +58,28 @@ BAND_NOTE_TYPE = {"LOW": "DON", "MID": "KA", "HIGH": None}
 
 # --- Grille rythmique ------------------------------------------------------
 
-#: Subdivisions par temps. 4 = doubles-croches, 2 = croches, 1 = noires.
+#: Subdivisions par temps en regime normal. 2 = croches.
 #:
-#: 2 par defaut, sur mesure : en doubles-croches, l'ecart le plus frequent entre
+#: Mesure a l'appui : en doubles-croches partout, l'ecart le plus frequent entre
 #: deux notes ne represente que 29 % des ecarts — les notes tombent sur la
 #: grille mais a des positions arbitraires, et la main ne prend jamais le pli.
 #: En croches, ce chiffre monte a 71 % pour un nombre de notes identique.
 #: C'est la regularite qui rend une partition agreable, pas la densite.
 BEAT_SUBDIVISIONS = 2
+
+#: Subdivisions sur les temps marques comme moments forts. 4 = doubles-croches.
+#: C'est ce qui permet aux roulements de batterie et aux relances de guitare
+#: d'exister, sans transformer tout le morceau en soupe.
+ACCENT_SUBDIVISIONS = 4
+
+#: Un temps est un moment fort si son intensite depasse la mediane locale de ce
+#: facteur. Monter la valeur rend les moments forts plus rares et plus marques.
+ACCENT_RATIO = 1.6
+
+#: Nombre de temps sur lesquels la mediane locale est calculee. Une fenetre
+#: large compare un temps a la section entiere, une fenetre etroite a son
+#: voisinage immediat. 16 temps valent environ 4 mesures.
+ACCENT_WINDOW_BEATS = 16
 
 #: Recalage sur la grille rythmique. A desactiver si `beat_track` se trompe de
 #: tempo sur un morceau : la grille serait alors fausse, et recaler dessus ferait

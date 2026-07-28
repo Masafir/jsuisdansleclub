@@ -106,66 +106,55 @@ def select_strongest(
 
 
 def merge_bands(
-    band_times: dict[str, list[float]], min_gap_s: float
+    band_times: dict[str, list[float]],
+    band_strengths: dict[str, list[float]],
+    min_gap_s: float,
 ) -> tuple[list[float], list[NoteType]]:
     """Fusionne les detections par bande en une seule suite de notes typees.
 
-    A IMPLEMENTER (amiral). Fonction pure.
+    Chaque bande a produit ses instants ; il faut en faire une partition unique,
+    ou chaque note porte le type de la bande dont elle vient.
 
-    Chaque bande a produit ses instants ; il faut maintenant en faire une
-    partition unique, ou chaque note porte le type de la bande dont elle vient.
+    **L'arbitrage se fait a l'intensite.** Quand deux bandes frappent trop pres
+    l'une de l'autre pour etre jouees toutes les deux, on garde la plus forte,
+    et non celle d'une bande privilegiee d'avance. Une caisse claire qui claque
+    l'emporte donc sur un kick discret, ce qui est ce que l'oreille attend : les
+    accents ressortent au lieu d'etre ecrases par une regle fixe. L'ordre de
+    `config.BANDS` ne sert plus qu'a departager les egalites parfaites.
 
-    Marche a suivre :
-
-    1. Traduire chaque bande en type de note via `config.BAND_NOTE_TYPE`.
-       Une bande dont le type vaut `None` est **ignoree** (c'est le cas du
-       charleston par defaut) : ne rien produire pour elle.
-
-    2. Rassembler des **triplets** (instant, priorite, type) pour les bandes
-       retenues. La priorite doit etre calculee dans la boucle, tant que le nom
-       de la bande est encore connu — c'est son rang dans config.BANDS :
-
-           priorite = list(config.BANDS).index(nom_de_bande)
-
-       Un couple (instant, type) ne suffirait pas : le type ne dit pas de
-       quelle bande la note vient, et l'etape suivante en a besoin.
-
-    3. Resoudre les collisions : deux notes distantes de moins de `min_gap_s`
-       sont injouables. On garde celle dont la bande vient **en premier dans
-       `config.BANDS`** — l'ordre y est deliberement LOW, MID, HIGH, car le
-       kick est l'ancre rythmique et doit l'emporter sur la caisse claire.
-
-       Facon simple d'y arriver : trier les triplets sur leurs deux premiers
-       elements (instant croissant, puis priorite), puis les parcourir en ne
-       conservant un triplet que s'il est assez loin du dernier conserve.
-
-    4. Renvoyer deux listes paralleles : les instants et les types, dans
-       l'ordre chronologique. C'est exactement ce qu'attend `times_to_notes`.
-
-    Cas limites : dictionnaire vide -> ([], []) ; une bande sans instant est
-    sans effet.
-
-    Tests : `test_notes.py::TestMergeBands`
+    Les intensites doivent avoir ete **normalisees par bande** en amont, sinon
+    une bande globalement plus energique gagnerait systematiquement.
     """
-    couples = []
+    entries: list[tuple[float, float, int, NoteType]] = []
 
-    for band_name, times in band_times.items(): 
+    for index, band_name in enumerate(config.BANDS):
         note_type = config.BAND_NOTE_TYPE.get(band_name)
-        if note_type is not None:
-            priority = list(config.BANDS).index(band_name)
-            couples.extend((t, priority, note_type) for t in times)
+        if note_type is None or band_name not in band_times:
+            continue  # bande volontairement ignoree, ou absente de l'analyse
 
-    couples.sort(key=lambda x: (x[0], x[1]))
+        times = band_times[band_name]
+        strengths = band_strengths.get(band_name, [])
+        if len(strengths) != len(times):
+            raise ValueError(
+                f"bande {band_name} : {len(times)} instants pour "
+                f"{len(strengths)} intensites"
+            )
+        entries.extend(
+            (time_s, strength, index, note_type)
+            for time_s, strength in zip(times, strengths)
+        )
 
-    result_times = []
-    result_types = []
+    # Du plus fort au plus faible : chaque note rejetee l'est au profit d'une
+    # plus intense, jamais l'inverse.
+    entries.sort(key=lambda entry: (-entry[1], entry[2], entry[0]))
 
-    for t, _, note_type in couples:
-        if not result_times or t - result_times[-1] >= min_gap_s:
-            result_times.append(t)
-            result_types.append(note_type)
+    kept: list[tuple[float, NoteType]] = []
+    for time_s, _strength, _priority, note_type in entries:
+        if all(abs(time_s - other) >= min_gap_s for other, _ in kept):
+            kept.append((time_s, note_type))
 
-    return result_times, result_types
+    kept.sort(key=lambda pair: pair[0])
+    return [time_s for time_s, _ in kept], [note_type for _, note_type in kept]
 
 
 def classify_note_type(

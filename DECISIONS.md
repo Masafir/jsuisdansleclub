@@ -53,6 +53,19 @@ Fenêtres de jugement : ±40 ms `PERFECT`, ±90 ms `GOOD`, au-delà `MISS`.
 - **La partition de test est du code, pas un JSON** (`client/src/chart/testChart.ts`) : elle génère les notes procéduralement. Le format JSON n'apparaîtra qu'avec le pipeline, quand il faudra transporter des partitions générées.
 - **Un prototype d'estimation de tempo est conservé** dans `pipeline/prototype/` : sans dépendance (ffmpeg seul), il donne BPM et offset d'un morceau. Il ne remplace pas librosa — il travaille sur l'énergie totale, pas sur le flux spectral — mais il documente la méthode et dépanne pour caler une partition à la main.
 
+## Moments forts et arbitrage par intensité (28 juil. 2026)
+
+Le passage en croches avait réglé la difficulté mais rendu les partitions un peu vides : les roulements de batterie et les relances de guitare, ceux qui donnent l'impression de *jouer* le morceau, passaient à la trappe. Une subdivision fixe plafonne partout, y compris là où la musique s'emballe.
+
+- **Grille à finesse variable.** On mesure le nombre d'attaques par temps, on le compare à la médiane locale, et les temps qui dépassent nettement passent en doubles-croches ; le reste demeure en croches. C'est ce que fait un charter humain : couplet en croches, roulement en doubles au moment du fill. Résultat mesuré : 9 % des temps deviennent des moments forts, avec 3 à 4 notes/s dedans contre 2,2 ailleurs, sans perdre la régularité (85 % de motif dominant).
+- **Compter les attaques, pas sommer l'énergie.** Première version fausse : sommer l'énergie par temps ne détectait qu'un seul moment fort sur 225 dans un morceau de rock. Une batterie qui joue en continu délivre la même énergie à chaque temps — un roulement ne frappe pas plus fort, il frappe **plus souvent**.
+- **Comparaison locale, par médiane glissante.** Un seuil global marquerait tout le refrain comme un long moment fort et laisserait les couplets plats. La médiane plutôt que la moyenne, pour qu'un pic isolé ne masque pas les accents voisins.
+- **L'arbitrage des collisions se fait à l'intensité**, plus par priorité de bande fixe. Une caisse claire qui claque l'emporte sur un kick discret : les accents ressortent au lieu d'être écrasés. Les intensités sont normalisées par bande, sinon une bande globalement plus énergique gagnerait tout.
+
+Sur l'ergonomie : la règle « ne pas taper trois fois avec le même doigt » ne s'applique pas à notre disposition. Chaque type ayant deux touches (DON = F et J), une suite de notes identiques se joue en alternant les mains — c'est précisément pourquoi le taiko fonctionne ainsi.
+
+Vitesse de défilement : elle reste **constante**, délibérément. La faire varier casserait la relation apprise entre distance et temps, qui est ce sur quoi le joueur fonde son anticipation. L'espacement des notes reflète déjà l'intensité.
+
 ## La régularité prime sur la densité (28 juil. 2026)
 
 Après les bandes de fréquences, le jeu restait difficile et « ne suivait pas la musique ». La mesure a écarté les explications attendues : la densité était modérée (2,4 notes/s), la répartition DON/KA équilibrée, le tempo correct, et 70 % des notes tombaient bien sur la grille.

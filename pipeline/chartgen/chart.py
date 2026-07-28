@@ -72,28 +72,50 @@ def notes_from_bands(
     """Analyse par bandes : chaque registre produit son propre type de note."""
     envelopes = analysis.onset_envelopes_by_band(samples, sample_rate)
 
-    grid: list[float] = []
-    tolerance = 0.0
-    if config.USE_GRID_QUANTIZATION:
-        grid = analysis.beat_grid(samples, sample_rate)
-        tolerance = analysis.grid_tolerance_s(grid)
-
-    band_times: dict[str, list[float]] = {}
+    # 1. Detecter d'abord, sans grille : c'est le nombre d'attaques par temps
+    #    qui va reveler ou se trouvent les moments forts.
+    detected: dict[str, list[float]] = {}
     for band, envelope in envelopes.items():
         if config.BAND_NOTE_TYPE.get(band) is None:
             continue  # bande volontairement ignoree (le charleston, par defaut)
 
-        detected = analysis.detect_onset_times(envelope, sample_rate)
-        strengths = analysis.strength_at(envelope, detected, sample_rate)
-        strongest = notes.select_strongest(detected, strengths, config.MIN_NOTE_GAP_S)
-
-        band_times[band] = (
-            analysis.quantize_to_grid(strongest, grid, tolerance)
-            if config.USE_GRID_QUANTIZATION
-            else strongest
+        times = analysis.detect_onset_times(envelope, sample_rate)
+        raw_strengths = analysis.strength_at(envelope, times, sample_rate)
+        detected[band] = notes.select_strongest(
+            times, raw_strengths, config.MIN_NOTE_GAP_S
         )
 
-    return notes.merge_bands(band_times, config.MIN_NOTE_GAP_S)
+    # 2. Grille a finesse variable : croches en regime normal, doubles-croches
+    #    la ou la musique s'emballe. C'est ce qui laisse exister les roulements
+    #    sans transformer tout le morceau en soupe.
+    grid: list[float] = []
+    tolerance = 0.0
+    if config.USE_GRID_QUANTIZATION:
+        beats = analysis.beat_times(samples, sample_rate)
+        all_onsets = sorted(t for times in detected.values() for t in times)
+        density = analysis.onsets_per_beat(all_onsets, beats)
+        accents = analysis.find_accent_beats(density)
+        grid = analysis.variable_grid(beats, accents)
+        tolerance = analysis.grid_tolerance_s(grid)
+
+    # 3. Recaler, puis arbitrer les collisions a l'intensite.
+    band_times: dict[str, list[float]] = {}
+    band_strengths: dict[str, list[float]] = {}
+
+    for band, times in detected.items():
+        final = (
+            analysis.quantize_to_grid(times, grid, tolerance)
+            if config.USE_GRID_QUANTIZATION
+            else times
+        )
+        band_times[band] = final
+        # Normalisees par bande : sans ca, une bande globalement plus energique
+        # remporterait tous les arbitrages.
+        band_strengths[band] = analysis.normalized_strength_at(
+            envelopes[band], final, sample_rate
+        )
+
+    return notes.merge_bands(band_times, band_strengths, config.MIN_NOTE_GAP_S)
 
 
 def notes_from_full_spectrum(

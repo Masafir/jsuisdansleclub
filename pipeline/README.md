@@ -138,6 +138,9 @@ Une partition brute est rarement amusable du premier coup : c'est
 |---|---|
 | `BAND_NOTE_TYPE` | mettre une bande à `None` la supprime entièrement — le levier le plus fort sur la densité |
 | `BEAT_SUBDIVISIONS` | 4 = doubles-croches, 2 = croches. Baisser ralentit et régularise |
+| `ACCENT_RATIO` | monter rend les moments forts plus rares et plus marqués |
+| `ACCENT_SUBDIVISIONS` | finesse de la grille dans les moments forts |
+| `ACCENT_WINDOW_BEATS` | voisinage sur lequel un temps est jugé « exceptionnel » |
 | `ONSET_SENSITIVITY` | monter pour ne garder que les attaques franches |
 | `QUANTIZE_TOLERANCE_RATIO` | baisser jette plus d'onsets hors grille |
 | `MIN_NOTE_GAP_S` | plafond absolu de densité |

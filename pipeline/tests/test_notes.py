@@ -77,45 +77,79 @@ class TestSelectStrongest:
 
 class TestMergeBands:
     def test_dictionnaire_vide(self):
-        assert merge_bands({}, 0.1) == ([], [])
+        assert merge_bands({}, {}, 0.1) == ([], [])
 
     def test_bande_grave_donne_des_don(self):
-        times, types = merge_bands({"LOW": [0.0, 0.5]}, 0.1)
+        times, types = merge_bands({"LOW": [0.0, 0.5]}, {"LOW": [1.0, 1.0]}, 0.1)
         assert times == [0.0, 0.5]
         assert types == ["DON", "DON"]
 
     def test_bande_medium_donne_des_ka(self):
-        times, types = merge_bands({"MID": [0.25]}, 0.1)
+        times, types = merge_bands({"MID": [0.25]}, {"MID": [1.0]}, 0.1)
         assert types == ["KA"]
 
     def test_bande_ignoree_ne_produit_rien(self):
         # HIGH vaut None dans BAND_NOTE_TYPE : le charleston est ecarte.
-        assert merge_bands({"HIGH": [0.0, 0.1, 0.2]}, 0.1) == ([], [])
+        band_times = {"HIGH": [0.0, 0.1, 0.2]}
+        band_strengths = {"HIGH": [5.0, 5.0, 5.0]}
+        assert merge_bands(band_times, band_strengths, 0.1) == ([], [])
 
     def test_bandes_entrelacees_dans_l_ordre_chronologique(self):
-        times, types = merge_bands({"LOW": [0.0, 1.0], "MID": [0.5]}, 0.1)
+        times, types = merge_bands(
+            {"LOW": [0.0, 1.0], "MID": [0.5]},
+            {"LOW": [1.0, 1.0], "MID": [1.0]},
+            0.1,
+        )
         assert times == [0.0, 0.5, 1.0]
         assert types == ["DON", "KA", "DON"]
 
-    def test_collision_le_grave_l_emporte(self):
-        # Kick et caisse claire a 20 ms d'ecart : injouable, le kick gagne.
-        times, types = merge_bands({"LOW": [0.50], "MID": [0.52]}, 0.1)
+    def test_collision_la_plus_forte_l_emporte(self):
+        # Caisse claire qui claque contre kick discret : la snare gagne, meme
+        # si le grave est prioritaire dans config.BANDS.
+        times, types = merge_bands(
+            {"LOW": [0.50], "MID": [0.52]},
+            {"LOW": [1.0], "MID": [3.0]},
+            0.1,
+        )
+        assert times == [0.52]
+        assert types == ["KA"]
+
+    def test_collision_le_grave_gagne_quand_il_est_plus_fort(self):
+        times, types = merge_bands(
+            {"LOW": [0.50], "MID": [0.52]},
+            {"LOW": [4.0], "MID": [1.0]},
+            0.1,
+        )
         assert times == [0.50]
         assert types == ["DON"]
 
-    def test_collision_resolue_quel_que_soit_l_ordre_des_cles(self):
-        times, types = merge_bands({"MID": [0.52], "LOW": [0.50]}, 0.1)
+    def test_egalite_parfaite_departagee_par_l_ordre_des_bandes(self):
+        times, types = merge_bands(
+            {"LOW": [0.50], "MID": [0.52]},
+            {"LOW": [2.0], "MID": [2.0]},
+            0.1,
+        )
         assert types == ["DON"]
 
+    def test_resultat_independant_de_l_ordre_des_cles(self):
+        arguments = ({"MID": [0.52], "LOW": [0.50]}, {"MID": [3.0], "LOW": [1.0]}, 0.1)
+        assert merge_bands(*arguments) == ([0.52], ["KA"])
+
     def test_bande_vide_sans_effet(self):
-        times, types = merge_bands({"LOW": [], "MID": [0.3]}, 0.1)
+        times, types = merge_bands({"LOW": [], "MID": [0.3]}, {"LOW": [], "MID": [1.0]}, 0.1)
         assert times == [0.3]
         assert types == ["KA"]
 
     def test_notes_suffisamment_espacees_toutes_conservees(self):
-        times, types = merge_bands({"LOW": [0.0], "MID": [0.5]}, 0.1)
+        times, types = merge_bands(
+            {"LOW": [0.0], "MID": [0.5]}, {"LOW": [1.0], "MID": [1.0]}, 0.1
+        )
         assert times == [0.0, 0.5]
         assert types == ["DON", "KA"]
+
+    def test_intensites_incoherentes_levent_une_erreur(self):
+        with pytest.raises(ValueError):
+            merge_bands({"LOW": [0.0, 0.5]}, {"LOW": [1.0]}, 0.1)
 
 
 class TestClassifyNoteType:
