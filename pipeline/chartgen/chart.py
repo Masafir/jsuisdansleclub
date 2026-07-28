@@ -71,8 +71,12 @@ def notes_from_bands(
 ) -> tuple[list[float], list[notes.NoteType]]:
     """Analyse par bandes : chaque registre produit son propre type de note."""
     envelopes = analysis.onset_envelopes_by_band(samples, sample_rate)
-    grid = analysis.beat_grid(samples, sample_rate)
-    tolerance = analysis.grid_tolerance_s(grid)
+
+    grid: list[float] = []
+    tolerance = 0.0
+    if config.USE_GRID_QUANTIZATION:
+        grid = analysis.beat_grid(samples, sample_rate)
+        tolerance = analysis.grid_tolerance_s(grid)
 
     band_times: dict[str, list[float]] = {}
     for band, envelope in envelopes.items():
@@ -82,7 +86,12 @@ def notes_from_bands(
         detected = analysis.detect_onset_times(envelope, sample_rate)
         strengths = analysis.strength_at(envelope, detected, sample_rate)
         strongest = notes.select_strongest(detected, strengths, config.MIN_NOTE_GAP_S)
-        band_times[band] = analysis.quantize_to_grid(strongest, grid, tolerance)
+
+        band_times[band] = (
+            analysis.quantize_to_grid(strongest, grid, tolerance)
+            if config.USE_GRID_QUANTIZATION
+            else strongest
+        )
 
     return notes.merge_bands(band_times, config.MIN_NOTE_GAP_S)
 

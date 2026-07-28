@@ -142,6 +142,12 @@ Une partition brute est rarement amusable du premier coup : c'est
 | `QUANTIZE_TOLERANCE_RATIO` | baisser jette plus d'onsets hors grille |
 | `MIN_NOTE_GAP_S` | plafond absolu de densité |
 | `BANDS` | déplacer les frontières si le kick ou la caisse claire est mal capté |
+| `USE_GRID_QUANTIZATION` | désactiver si le tempo estimé est manifestement faux |
+
+**Vérifier le tempo affiché après chaque génération.** C'est lui qui construit
+la grille de quantification : s'il est faux, les notes sont recalées sur une
+grille fausse et la partition empire. Un morceau qui donne un tempo aberrant se
+traite en passant `USE_GRID_QUANTIZATION` à `False`.
 
 La CLI affiche après chaque génération le
 nombre de notes par seconde et la répartition DON/KA, les deux chiffres qui

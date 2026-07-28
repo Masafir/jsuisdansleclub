@@ -57,6 +57,12 @@ BAND_NOTE_TYPE = {"LOW": "DON", "MID": "KA", "HIGH": None}
 #: Plus la valeur est basse, plus les motifs sont reguliers et lents.
 BEAT_SUBDIVISIONS = 4
 
+#: Recalage sur la grille rythmique. A desactiver si `beat_track` se trompe de
+#: tempo sur un morceau : la grille serait alors fausse, et recaler dessus ferait
+#: plus de mal que de bien. Le tempo estime est affiche a chaque generation,
+#: c'est lui qui permet de s'en rendre compte.
+USE_GRID_QUANTIZATION = True
+
 #: Distance maximale a un point de grille pour qu'un onset y soit recale,
 #: exprimee en fraction d'un pas de grille. Au-dela, l'onset est jete : c'est
 #: un ornement ou du bruit, pas un element de la pulsation.

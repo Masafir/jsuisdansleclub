@@ -14,6 +14,7 @@ Vocabulaire utile avant de lire le code :
 """
 
 from __future__ import annotations
+from os import times
 
 import librosa
 import numpy as np
@@ -172,8 +173,17 @@ def onset_envelopes_by_band(
 
     Tests : `test_analysis.py::TestOnsetEnvelopesByBand`
     """
-    raise NotImplementedError("TODO(amiral): onset_envelopes_by_band")
-
+    spectrogram = librosa.feature.melspectrogram(
+        y=samples, sr=sample_rate, hop_length=config.HOP_LENGTH
+    )
+    channels = mel_bin_boundaries(spectrogram.shape[0], sample_rate)
+    envelopes = librosa.onset.onset_strength_multi(
+        S=librosa.power_to_db(spectrogram),
+        sr=sample_rate,
+        hop_length=config.HOP_LENGTH,
+        channels=channels
+    )
+    return {name: envelopes[i] for i, name in enumerate(config.BANDS)}
 
 def quantize_to_grid(
     times: list[float], grid: list[float], tolerance_s: float
@@ -209,7 +219,15 @@ def quantize_to_grid(
 
     Tests : `test_analysis.py::TestQuantizeToGrid`
     """
-    raise NotImplementedError("TODO(amiral): quantize_to_grid")
+    if(not grid):
+        return []
+    closest_points = []
+    eps = 1e-9
+    for t in times:
+        closest = min(grid, key=lambda g: abs(g - t))
+        if abs(closest - t) <= tolerance_s + eps:
+            closest_points.append(closest)
+    return sorted(set(closest_points))
 
 
 def beat_grid(

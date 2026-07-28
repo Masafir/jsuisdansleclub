@@ -148,17 +148,19 @@ def merge_bands(
     Tests : `test_notes.py::TestMergeBands`
     """
     couples = []
-    for band, times in band_times.items():
-        note_type = config.BAND_NOTE_TYPE.get(band)
-        if note_type is not None:
-            couples.extend((t, note_type) for t in times)
 
-    # Tri par (instant croissant, priorite de bande)
-    couples.sort(key=lambda pair: (pair[0], list(config.BANDS).index(pair[1])))
+    for band_name, times in band_times.items(): 
+        note_type = config.BAND_NOTE_TYPE.get(band_name)
+        if note_type is not None:
+            priority = list(config.BANDS).index(band_name)
+            couples.extend((t, priority, note_type) for t in times)
+
+    couples.sort(key=lambda x: (x[0], x[1]))
 
     result_times = []
     result_types = []
-    for t, note_type in couples:
+
+    for t, _, note_type in couples:
         if not result_times or t - result_times[-1] >= min_gap_s:
             result_times.append(t)
             result_types.append(note_type)
