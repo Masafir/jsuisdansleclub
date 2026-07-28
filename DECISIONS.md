@@ -53,6 +53,17 @@ Fenêtres de jugement : ±40 ms `PERFECT`, ±90 ms `GOOD`, au-delà `MISS`.
 - **La partition de test est du code, pas un JSON** (`client/src/chart/testChart.ts`) : elle génère les notes procéduralement. Le format JSON n'apparaîtra qu'avec le pipeline, quand il faudra transporter des partitions générées.
 - **Un prototype d'estimation de tempo est conservé** dans `pipeline/prototype/` : sans dépendance (ffmpeg seul), il donne BPM et offset d'un morceau. Il ne remplace pas librosa — il travaille sur l'énergie totale, pas sur le flux spectral — mais il documente la méthode et dépanne pour caler une partition à la main.
 
+## La régularité prime sur la densité (28 juil. 2026)
+
+Après les bandes de fréquences, le jeu restait difficile et « ne suivait pas la musique ». La mesure a écarté les explications attendues : la densité était modérée (2,4 notes/s), la répartition DON/KA équilibrée, le tempo correct, et 70 % des notes tombaient bien sur la grille.
+
+Le vrai problème était la **répétition des motifs**. En doubles-croches, l'écart le plus fréquent entre deux notes ne représentait que 29 % des écarts : les notes étaient sur la grille, mais à des positions arbitraires (1, puis 3, puis 2, puis 4 subdivisions). La main ne peut jamais prendre le pli, et chaque note demande une réaction plutôt qu'une anticipation — d'où la difficulté.
+
+- **`BEAT_SUBDIVISIONS` passe de 4 à 2.** Mesuré sur deux morceaux : la part du motif dominant monte de 29 % à 71 %, à nombre de notes identique. Ce n'est pas la densité qui fatiguait, c'est l'irrégularité.
+- **Monter `ONSET_SENSITIVITY` est contre-productif** pour alléger : ça retire des notes au milieu de suites régulières et casse les motifs (71 % → 53 % en passant de 1.2 à 1.8). Pour alléger, baisser la subdivision.
+
+Leçon générale : sur ce jeu, la **prévisibilité** compte plus que le nombre de notes. On mesure la part du motif dominant, pas seulement les notes par seconde.
+
 ## Analyse par bandes de fréquences (28 juil. 2026)
 
 La première génération suivait mal la musique : `onset_strength` travaille sur tout le spectre à la fois, donc un kick, un charleston, une syllabe chantée et une queue de réverbération produisent tous un pic indistinct. La partition suivait la moyenne de tout ce qui bouge — ce qui perceptivement ne suit rien.

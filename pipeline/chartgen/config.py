@@ -22,7 +22,12 @@ HOP_LENGTH = 512
 
 #: Sensibilite du seuillage, en nombre d'ecarts-types au-dessus de la moyenne
 #: de l'enveloppe. Plus haut = moins de notes, seules les attaques franches
-#: passent. C'est le premier bouton a tourner si la partition est trop chargee.
+#: passent.
+#:
+#: ATTENTION : ce n'est PAS le bon bouton pour alleger une partition. Monter la
+#: sensibilite retire des notes au milieu de suites regulieres et casse les
+#: motifs : mesure sur deux morceaux, passer de 1.2 a 1.8 fait tomber la part du
+#: motif dominant de 71 % a 53 %. Pour alleger, baisser BEAT_SUBDIVISIONS.
 ONSET_SENSITIVITY = 1.2
 
 #: Duree minimale entre deux onsets retenus, en secondes. Evite qu'une seule
@@ -53,9 +58,14 @@ BAND_NOTE_TYPE = {"LOW": "DON", "MID": "KA", "HIGH": None}
 
 # --- Grille rythmique ------------------------------------------------------
 
-#: Subdivisions par temps. 4 = doubles-croches, 2 = croches.
-#: Plus la valeur est basse, plus les motifs sont reguliers et lents.
-BEAT_SUBDIVISIONS = 4
+#: Subdivisions par temps. 4 = doubles-croches, 2 = croches, 1 = noires.
+#:
+#: 2 par defaut, sur mesure : en doubles-croches, l'ecart le plus frequent entre
+#: deux notes ne represente que 29 % des ecarts — les notes tombent sur la
+#: grille mais a des positions arbitraires, et la main ne prend jamais le pli.
+#: En croches, ce chiffre monte a 71 % pour un nombre de notes identique.
+#: C'est la regularite qui rend une partition agreable, pas la densite.
+BEAT_SUBDIVISIONS = 2
 
 #: Recalage sur la grille rythmique. A desactiver si `beat_track` se trompe de
 #: tempo sur un morceau : la grille serait alors fausse, et recaler dessus ferait
