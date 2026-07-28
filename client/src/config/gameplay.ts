@@ -144,6 +144,40 @@ export const FEEDBACK = {
   PULSE_START_ALPHA: 0.9,
   /** Durée d'affichage du texte de jugement (PERFECT / GOOD / MISS). */
   JUDGEMENT_TEXT_DURATION_MS: 500,
+  /**
+   * Nombre d'anneaux d'une pulsation GOOD ou MISS. Comme pour le PERFECT, ce
+   * sont des cercles évidés : un disque plein masque la note et la ligne de
+   * jugement au moment précis où le joueur veut les voir.
+   */
+  PULSE_RINGS: 2,
+  /** Épaisseur d'un anneau de pulsation, en pixels. */
+  PULSE_RING_WIDTH_PX: 4,
+  /** Écart entre deux anneaux successifs, en fraction du rayon de base. */
+  PULSE_RING_SPACING_RATIO: 0.22,
+} as const;
+
+/** Style de la ligne de jugement : le cercle que le joueur vise. */
+export const JUDGE_CIRCLE = {
+  /**
+   * Nombre de halos concentriques dessinés autour du cercle. Chacun est plus
+   * large et plus transparent que le précédent, ce qui imite une lueur néon
+   * sans le coût d'un filtre de flou.
+   */
+  GLOW_LAYERS: 4,
+  /** Épaisseur du trait principal, en pixels. */
+  STROKE_WIDTH_PX: 3,
+  /** Élargissement de chaque halo successif, en pixels. */
+  GLOW_STEP_PX: 5,
+  /** Opacité du halo le plus intérieur ; les suivants s'estompent. */
+  GLOW_ALPHA: 0.35,
+  /** Période de la respiration au repos, en millisecondes. */
+  IDLE_PERIOD_MS: 1600,
+  /** Amplitude de la respiration, en fraction du rayon. */
+  IDLE_SCALE_AMPLITUDE: 0.06,
+  /** Grossissement instantané lors d'un appui réussi. */
+  HIT_SCALE: 1.25,
+  /** Temps de retour à la taille normale après un appui, en millisecondes. */
+  HIT_RECOVERY_MS: 220,
 } as const;
 
 /** Séquence de démarrage. */
@@ -190,9 +224,9 @@ export const MIX = {
   MUSIC: 0.8,
   /** Volume de chaque effet sonore, réglable indépendamment. */
   SFX: {
-    PERFECT: 0.07,
-    GOOD: 0.05,
-    MISS: 0.07,
+    PERFECT: 0.1,
+    GOOD: 0.07,
+    MISS: 0.1,
   } satisfies Record<Judgement, number>,
 } as const;
 

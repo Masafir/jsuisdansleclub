@@ -8,7 +8,13 @@
  */
 
 import { Application, Container, Graphics } from 'pixi.js';
-import { FEEDBACK, HIGHWAY, type Judgement, type NoteType } from '../config/gameplay';
+import {
+  FEEDBACK,
+  HIGHWAY,
+  JUDGE_CIRCLE,
+  type Judgement,
+  type NoteType,
+} from '../config/gameplay';
 import { HIGHWAY_COLORS, NOTE_COLORS, FEEDBACK_COLORS, GRADIENTS } from '../config/theme';
 import type { Note } from '../chart/types';
 
@@ -22,10 +28,13 @@ interface Pulse {
 export class HighwayRenderer {
   private readonly app = new Application();
   private readonly decor = new Container();
+  private readonly judge = new Container();
   private readonly noteLayer = new Container();
   private readonly pulseLayer = new Container();
   private readonly noteGraphics = new Map<Note, Graphics>();
   private pulses: Pulse[] = [];
+  /** Instant du dernier appui réussi, qui pilote la dilatation du cercle. */
+  private lastHitAtMs = Number.NEGATIVE_INFINITY;
 
   /** Prépare le canvas et l'attache au DOM. */
   async init(container: HTMLElement): Promise<void> {
@@ -36,7 +45,7 @@ export class HighwayRenderer {
     });
     container.appendChild(this.app.canvas);
 
-    this.app.stage.addChild(this.decor, this.noteLayer, this.pulseLayer);
+    this.app.stage.addChild(this.decor, this.judge, this.noteLayer, this.pulseLayer);
     this.drawDecor();
     this.app.renderer.on('resize', () => this.drawDecor());
   }
@@ -63,7 +72,7 @@ export class HighwayRenderer {
     return this.height * HIGHWAY.LANE_Y_RATIO;
   }
 
-  /** Décor statique : la bande de jeu et le cercle de jugement. */
+  /** Décor statique : la bande de jeu, et le cercle de jugement animé. */
   private drawDecor(): void {
     this.decor.removeChildren();
 
@@ -73,11 +82,8 @@ export class HighwayRenderer {
       .fill({ color: HIGHWAY_COLORS.LANE_BACKGROUND })
       .stroke({ color: HIGHWAY_COLORS.LANE_BORDER, width: 2, alpha: 0.6 });
 
-    const judgeCircle = new Graphics()
-      .circle(this.judgeLineX, this.laneY, HIGHWAY.JUDGE_CIRCLE_RADIUS_PX)
-      .stroke({ color: HIGHWAY_COLORS.JUDGE_CIRCLE, width: 3, alpha: 0.9 });
-
-    this.decor.addChild(lane, judgeCircle);
+    this.decor.addChild(lane);
+    this.drawJudgeCircle();
   }
 
   /**
@@ -131,6 +137,58 @@ export class HighwayRenderer {
     }
   }
 
+  /**
+   * Cercle de jugement en néon : un trait net, entouré de halos de plus en plus
+   * larges et transparents. Empiler des traits coûte bien moins cher qu'un
+   * filtre de flou, et donne le même effet de lueur.
+   *
+   * Il est dessiné centré sur (0, 0) puis positionné : c'est ce qui permet de
+   * l'agrandir depuis son centre plutôt que depuis le coin de l'écran.
+   */
+  private drawJudgeCircle(): void {
+    this.judge.removeChildren();
+    const graphic = new Graphics();
+
+    for (let layer = JUDGE_CIRCLE.GLOW_LAYERS; layer > 0; layer--) {
+      graphic.circle(0, 0, HIGHWAY.JUDGE_CIRCLE_RADIUS_PX).stroke({
+        color: HIGHWAY_COLORS.JUDGE_CIRCLE,
+        width: JUDGE_CIRCLE.STROKE_WIDTH_PX + layer * JUDGE_CIRCLE.GLOW_STEP_PX,
+        alpha: JUDGE_CIRCLE.GLOW_ALPHA / layer,
+      });
+    }
+    graphic.circle(0, 0, HIGHWAY.JUDGE_CIRCLE_RADIUS_PX).stroke({
+      color: HIGHWAY_COLORS.JUDGE_CIRCLE,
+      width: JUDGE_CIRCLE.STROKE_WIDTH_PX,
+    });
+
+    this.judge.addChild(graphic);
+    this.judge.x = this.judgeLineX;
+    this.judge.y = this.laneY;
+  }
+
+  /**
+   * Anime la ligne de jugement : une respiration lente au repos, et une
+   * dilatation brève à chaque note touchée.
+   *
+   * La respiration donne de la vie à l'écran pendant les silences ; la
+   * dilatation confirme l'appui même quand le joueur regarde les notes arriver
+   * plutôt que le cercle lui-même.
+   */
+  updateJudgeCircle(songTimeMs: number): void {
+    const breath =
+      1 +
+      JUDGE_CIRCLE.IDLE_SCALE_AMPLITUDE *
+        Math.sin((songTimeMs / JUDGE_CIRCLE.IDLE_PERIOD_MS) * Math.PI * 2);
+
+    const sinceHit = songTimeMs - this.lastHitAtMs;
+    const recovering = sinceHit >= 0 && sinceHit < JUDGE_CIRCLE.HIT_RECOVERY_MS;
+    const impact = recovering
+      ? (JUDGE_CIRCLE.HIT_SCALE - 1) * (1 - sinceHit / JUDGE_CIRCLE.HIT_RECOVERY_MS)
+      : 0;
+
+    this.judge.scale.set(breath + impact);
+  }
+
   private createNoteGraphic(type: NoteType): Graphics {
     return new Graphics()
       .circle(0, 0, HIGHWAY.NOTE_RADIUS_PX)
@@ -146,14 +204,38 @@ export class HighwayRenderer {
     const graphic =
       judgement === 'PERFECT'
         ? this.createRainbowPulse()
-        : new Graphics()
-            .circle(0, 0, HIGHWAY.JUDGE_CIRCLE_RADIUS_PX)
-            .fill({ color: FEEDBACK_COLORS[judgement] });
+        : this.createRingPulse(FEEDBACK_COLORS[judgement]);
 
     graphic.x = this.judgeLineX;
     graphic.y = this.laneY;
     this.pulseLayer.addChild(graphic);
     this.pulses.push({ startedAtMs: songTimeMs, judgement, graphic });
+
+    // La ligne de jugement encaisse le coup : elle enfle puis se rétracte.
+    if (judgement !== 'MISS') this.lastHitAtMs = songTimeMs;
+  }
+
+  /**
+   * Onde concentrique évidée, pour les GOOD et les MISS.
+   *
+   * Un disque plein recouvrait la ligne de jugement et la note suivante au
+   * moment précis où le joueur en a besoin. Des anneaux laissent voir au
+   * travers tout en marquant l'impact.
+   */
+  private createRingPulse(color: number): Graphics {
+    const graphic = new Graphics();
+    for (let ring = 0; ring < FEEDBACK.PULSE_RINGS; ring++) {
+      const radius =
+        HIGHWAY.JUDGE_CIRCLE_RADIUS_PX *
+        (1 + ring * FEEDBACK.PULSE_RING_SPACING_RATIO);
+      graphic.circle(0, 0, radius).stroke({
+        color,
+        width: FEEDBACK.PULSE_RING_WIDTH_PX,
+        // Les anneaux extérieurs s'estompent : l'onde paraît se dissiper.
+        alpha: 1 - ring / FEEDBACK.PULSE_RINGS,
+      });
+    }
+    return graphic;
   }
 
   /** Halo arc-en-ciel : un anneau par couleur de la palette disco. */

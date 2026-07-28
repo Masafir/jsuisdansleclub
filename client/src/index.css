@@ -204,10 +204,18 @@ body {
   place-items: center;
   /* Texte sombre : lisible aussi bien sur le rouge du DON que sur le bleu du KA. */
   color: var(--color-night);
-  font-weight: 800;
-  font-size: calc(var(--disc-size) * 0.4);
-  border: 2px solid color-mix(in srgb, var(--color-white) 70%, transparent);
-  box-shadow: 0 0 1.25rem color-mix(in srgb, var(--color-purple) 60%, transparent);
+  font-weight: 900;
+  /* Lettre volontairement grosse : en jeu, le disque ne fait que 3 rem et le
+     regard ne s'y attarde qu'une fraction de seconde. */
+  font-size: calc(var(--disc-size) * 0.55);
+  line-height: 1;
+  /* Halo clair derrière la lettre : détache le glyphe de la couleur vive du
+     disque, où il se noyait. */
+  text-shadow: 0 0 0.35rem color-mix(in srgb, var(--color-white) 75%, transparent);
+  border: 2px solid color-mix(in srgb, var(--color-white) 85%, transparent);
+  box-shadow:
+    0 0 0.75rem color-mix(in srgb, var(--color-white) 35%, transparent),
+    0 0 1.5rem color-mix(in srgb, var(--color-purple) 60%, transparent);
 }
 
 .key-legend__hand-name {
@@ -244,13 +252,13 @@ body {
  * légende suit la piste au lieu de la recouvrir sur les écrans peu hauts.
  */
 .key-legend--floating {
-  --disc-size: 2.5rem;
+  --disc-size: 3rem;
   --hand-gap: 1.25rem;
   position: absolute;
   left: 1.5rem;
   bottom: calc(var(--lane-top-from-bottom) + 1.5rem);
   pointer-events: none;
-  opacity: 0.85;
+  opacity: 1;
 }
 
 /* En jeu, seules les couleurs comptent : les libellés seraient du bruit. */

@@ -186,6 +186,7 @@ export class GameSession {
       songTimeMs,
     );
     this.renderer.updatePulses(songTimeMs);
+    this.renderer.updateJudgeCircle(songTimeMs);
     this.emit(songTimeMs);
   };
 
