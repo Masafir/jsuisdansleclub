@@ -30,7 +30,39 @@ ONSET_SENSITIVITY = 1.2
 #: de notes.
 ONSET_MIN_GAP_S = 0.09
 
-# --- Classification DON / KA ----------------------------------------------
+# --- Analyse par bandes de frequences --------------------------------------
+
+#: Bascule entre l'analyse par bandes (nouvelle) et la detection large bande
+#: suivie d'une classification note par note (ancienne). Sert a comparer les
+#: deux sur un meme morceau.
+USE_BAND_ANALYSIS = True
+
+#: Bandes analysees separement, bornes en Hertz. L'ordre compte : en cas de
+#: collision entre deux bandes au meme instant, la premiere l'emporte — le kick
+#: est l'ancre rythmique, il doit gagner sur la caisse claire.
+BANDS = {
+    "LOW": (0.0, 150.0),      # kick, basse
+    "MID": (150.0, 2_000.0),  # caisse claire, clap, voix
+    "HIGH": (2_000.0, SAMPLE_RATE / 2),  # charleston, cymbales
+}
+
+#: Type de note produit par chaque bande. `None` = bande ignoree.
+#: Le charleston est ce qui joue le plus vite dans un morceau : le laisser
+#: passer inonde la partition, d'ou HIGH ignore par defaut.
+BAND_NOTE_TYPE = {"LOW": "DON", "MID": "KA", "HIGH": None}
+
+# --- Grille rythmique ------------------------------------------------------
+
+#: Subdivisions par temps. 4 = doubles-croches, 2 = croches.
+#: Plus la valeur est basse, plus les motifs sont reguliers et lents.
+BEAT_SUBDIVISIONS = 4
+
+#: Distance maximale a un point de grille pour qu'un onset y soit recale,
+#: exprimee en fraction d'un pas de grille. Au-dela, l'onset est jete : c'est
+#: un ornement ou du bruit, pas un element de la pulsation.
+QUANTIZE_TOLERANCE_RATIO = 0.35
+
+# --- Classification DON / KA (analyse large bande uniquement) ---------------
 
 #: Frontiere entre grave et aigu, en Hertz. En dessous : kick et basse (DON).
 #: Au-dessus : caisse claire, charleston, attaques vocales (KA).

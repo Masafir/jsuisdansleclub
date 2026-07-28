@@ -27,13 +27,38 @@ bibliothèque du jeu au rechargement de la page.
 
 | Fonction | Fichier | Ce qu'elle décide |
 |---|---|---|
-| `onset_envelope` | `analysis.py` | appel librosa du flux spectral |
-| `detect_onset_times` | `analysis.py` | seuillage : quelle attaque compte vraiment |
-| `enforce_min_gap` | `notes.py` | densité jouable |
-| `classify_note_type` | `notes.py` | grave → DON, aigu → KA |
-| `times_to_notes` | `notes.py` | conversion au format de partition |
+| `onset_envelopes_by_band` | `analysis.py` | une enveloppe par registre |
+| `quantize_to_grid` | `analysis.py` | recaler sur la grille, ou jeter |
+| `select_strongest` | `notes.py` | garder la plus forte d'un groupe |
+| `merge_bands` | `notes.py` | fusionner les bandes en notes typées |
 
-Les 27 tests passent au vert quand les cinq fonctions sont écrites. Ceux de
+Trois sur quatre sont des **fonctions pures** : leurs tests n'utilisent aucun
+fichier audio et sont instantanés. Déjà écrites : `onset_envelope`,
+`detect_onset_times`, `enforce_min_gap`, `classify_note_type`, `times_to_notes`.
+
+## Comment fonctionne l'analyse
+
+Trois détections séparées au lieu d'une seule sur tout le spectre. Le type de
+note ne se devine plus après coup : il découle de **quel instrument a frappé**.
+
+| Bande | Contenu | Devient |
+|---|---|---|
+| < 150 Hz | kick, basse | **DON** |
+| 150–2000 Hz | caisse claire, clap, voix | **KA** |
+| > 2000 Hz | charleston, cymbales | **ignoré** |
+
+Le charleston est ce qui joue le plus vite dans un morceau : le laisser passer
+inondait la partition. Il reste activable via `BAND_NOTE_TYPE` dans la config.
+
+Les onsets sont ensuite **recalés sur une grille de doubles-croches** déduite du
+beat tracking. Ceux qui tombent loin de toute subdivision sont jetés : ce sont
+des ornements ou du bruit. Les motifs deviennent réguliers, donc anticipables —
+c'est ce qui rend une partition satisfaisante à jouer.
+
+`USE_BAND_ANALYSIS = False` rebascule sur l'ancienne analyse large bande, pour
+comparer les deux sur un même morceau.
+
+Les tests passent au vert quand les fonctions sont écrites. Ceux de
 `test_notes.py` portent sur des fonctions pures et n'utilisent aucun fichier
 audio ; ceux de `test_analysis.py` fabriquent leurs signaux à la main.
 
@@ -107,9 +132,18 @@ l'outil de base pour interroger un tableau numpy sans le parcourir à la main.
 ## Équilibrage
 
 Une partition brute est rarement amusable du premier coup : c'est
-`chartgen/config.py` qui fait la différence. `ONSET_SENSITIVITY` d'abord (monter
-la valeur pour moins de notes), puis `MIN_NOTE_GAP_S` (densité maximale) et
-`KA_ENERGY_RATIO` (proportion de KA). La CLI affiche après chaque génération le
+`chartgen/config.py` qui fait la différence. Par ordre d'impact :
+
+| Constante | Effet |
+|---|---|
+| `BAND_NOTE_TYPE` | mettre une bande à `None` la supprime entièrement — le levier le plus fort sur la densité |
+| `BEAT_SUBDIVISIONS` | 4 = doubles-croches, 2 = croches. Baisser ralentit et régularise |
+| `ONSET_SENSITIVITY` | monter pour ne garder que les attaques franches |
+| `QUANTIZE_TOLERANCE_RATIO` | baisser jette plus d'onsets hors grille |
+| `MIN_NOTE_GAP_S` | plafond absolu de densité |
+| `BANDS` | déplacer les frontières si le kick ou la caisse claire est mal capté |
+
+La CLI affiche après chaque génération le
 nombre de notes par seconde et la répartition DON/KA, les deux chiffres qui
 disent si un réglage va dans le bon sens.
 

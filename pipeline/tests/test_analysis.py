@@ -7,7 +7,12 @@ rend les tests rapides et deterministes.
 import numpy as np
 
 from chartgen import config
-from chartgen.analysis import detect_onset_times, onset_envelope
+from chartgen.analysis import (
+    detect_onset_times,
+    onset_envelope,
+    onset_envelopes_by_band,
+    quantize_to_grid,
+)
 
 
 def click_track(click_times_s: list[float], duration_s: float = 2.0) -> np.ndarray:
@@ -41,6 +46,82 @@ def test_onset_envelope_detecte_les_impulsions():
 
     for expected, actual in zip(click_times, detected):
         assert abs(actual - expected) < 0.05
+
+
+def tone_burst(frequency_hz: float, at_s: float, duration_s: float = 2.0) -> np.ndarray:
+    """Silence ponctue d'une breve note pure a la frequence demandee."""
+    samples = np.zeros(int(duration_s * config.SAMPLE_RATE), dtype=np.float32)
+    length = int(0.05 * config.SAMPLE_RATE)
+    start = int(at_s * config.SAMPLE_RATE)
+
+    t = np.arange(length) / config.SAMPLE_RATE
+    # Enveloppe descendante : une attaque franche suivie d'une extinction.
+    burst = np.sin(2 * np.pi * frequency_hz * t) * np.exp(-t * 30)
+    samples[start:start + length] = burst.astype(np.float32)
+    return samples
+
+
+class TestOnsetEnvelopesByBand:
+    def test_renvoie_une_enveloppe_par_bande(self):
+        envelopes = onset_envelopes_by_band(click_track([0.5]), config.SAMPLE_RATE)
+
+        assert set(envelopes) == set(config.BANDS)
+        for envelope in envelopes.values():
+            assert envelope.ndim == 1
+
+    def test_un_grave_excite_la_bande_grave(self):
+        # 60 Hz : un kick. La bande LOW doit reagir plus fort que la bande HIGH.
+        envelopes = onset_envelopes_by_band(tone_burst(60, 1.0), config.SAMPLE_RATE)
+
+        assert envelopes["LOW"].max() > envelopes["HIGH"].max()
+
+    def test_un_aigu_excite_la_bande_aigue(self):
+        # 6000 Hz : un charleston. C'est l'inverse.
+        envelopes = onset_envelopes_by_band(tone_burst(6000, 1.0), config.SAMPLE_RATE)
+
+        assert envelopes["HIGH"].max() > envelopes["LOW"].max()
+
+    def test_le_pic_tombe_au_bon_instant(self):
+        envelopes = onset_envelopes_by_band(tone_burst(60, 1.0), config.SAMPLE_RATE)
+
+        peak_frame = int(np.argmax(envelopes["LOW"]))
+        assert abs(frame_to_time(peak_frame) - 1.0) < 0.05
+
+
+class TestQuantizeToGrid:
+    #: Grille reguliere de 100 ms, comme des doubles-croches a 150 BPM.
+    GRID = [round(0.1 * i, 3) for i in range(11)]
+
+    def test_listes_vides(self):
+        assert quantize_to_grid([], self.GRID, 0.03) == []
+
+    def test_grille_vide_ne_retient_rien(self):
+        assert quantize_to_grid([0.15, 0.42], [], 0.03) == []
+
+    def test_instant_deja_sur_la_grille_inchange(self):
+        assert quantize_to_grid([0.3], self.GRID, 0.03) == [0.3]
+
+    def test_instant_proche_recale_sur_la_grille(self):
+        # 0.317 s est a 17 ms de 0.3 : dans la tolerance, donc aligne.
+        assert quantize_to_grid([0.317], self.GRID, 0.03) == [0.3]
+
+    def test_instant_eloigne_rejete(self):
+        # 0.35 s est a 50 ms des deux points voisins : c'est un ornement.
+        assert quantize_to_grid([0.35], self.GRID, 0.03) == []
+
+    def test_ecart_exactement_egal_a_la_tolerance_accepte(self):
+        assert quantize_to_grid([0.33], self.GRID, 0.03) == [0.3]
+
+    def test_deux_onsets_sur_le_meme_point_fusionnent(self):
+        assert quantize_to_grid([0.29, 0.31], self.GRID, 0.03) == [0.3]
+
+    def test_resultat_trie(self):
+        assert quantize_to_grid([0.7, 0.1, 0.4], self.GRID, 0.03) == [0.1, 0.4, 0.7]
+
+    def test_n_altere_pas_la_liste_d_entree(self):
+        times = [0.317, 0.35]
+        quantize_to_grid(times, self.GRID, 0.03)
+        assert times == [0.317, 0.35]
 
 
 class TestDetectOnsetTimes:

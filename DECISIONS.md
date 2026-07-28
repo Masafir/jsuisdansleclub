@@ -53,6 +53,18 @@ Fenêtres de jugement : ±40 ms `PERFECT`, ±90 ms `GOOD`, au-delà `MISS`.
 - **La partition de test est du code, pas un JSON** (`client/src/chart/testChart.ts`) : elle génère les notes procéduralement. Le format JSON n'apparaîtra qu'avec le pipeline, quand il faudra transporter des partitions générées.
 - **Un prototype d'estimation de tempo est conservé** dans `pipeline/prototype/` : sans dépendance (ffmpeg seul), il donne BPM et offset d'un morceau. Il ne remplace pas librosa — il travaille sur l'énergie totale, pas sur le flux spectral — mais il documente la méthode et dépanne pour caler une partition à la main.
 
+## Analyse par bandes de fréquences (28 juil. 2026)
+
+La première génération suivait mal la musique : `onset_strength` travaille sur tout le spectre à la fois, donc un kick, un charleston, une syllabe chantée et une queue de réverbération produisent tous un pic indistinct. La partition suivait la moyenne de tout ce qui bouge — ce qui perceptivement ne suit rien.
+
+- **Trois détections séparées** (grave < 150 Hz, médium 150–2000 Hz, aigu > 2000 Hz). Le type de note découle de l'instrument qui a frappé au lieu d'être deviné après coup : grave → DON, médium → KA.
+- **L'aigu est ignoré par défaut.** Le charleston est ce qui joue le plus vite dans un morceau ; il inondait la partition. C'est le levier de densité le plus efficace, et il reste activable dans `BAND_NOTE_TYPE`.
+- **Recalage sur une grille de doubles-croches** déduite du beat tracking. Les onsets loin de toute subdivision sont jetés (ornements, bruit). Les motifs deviennent réguliers donc anticipables — c'est ce qui rend une partition satisfaisante, plus que la justesse de chaque note prise isolément.
+- **Sélection de la note la plus forte** d'un groupe, et non la plus précoce comme le faisait `enforce_min_gap` : sinon une pré-écho ou une réverbération évince la vraie frappe.
+- **L'ancienne analyse est conservée** derrière `USE_BAND_ANALYSIS`, pour comparer les deux sur un même morceau plutôt que de juger de mémoire.
+
+La séparation de pistes (demucs) reste l'étape suivante si les bandes ne suffisent pas sur un mix dense — elle seule permettrait de suivre la voix. On mesure d'abord le gain des bandes.
+
 ## Difficulté et calibration (28 juil. 2026)
 
 Le jeu était trop dur avec les fenêtres d'origine (±40 / ±90 ms). Deux causes distinctes, traitées séparément :

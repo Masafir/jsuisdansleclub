@@ -116,6 +116,148 @@ def detect_onset_times(
 
     return enforce_min_gap(frames, min_gap_s)
 
+def mel_bin_boundaries(n_mels: int, sample_rate: int) -> list[int]:
+    """Frontieres de config.BANDS traduites en indices de bandes mel.
+
+    `onset_strength_multi` ne raisonne pas en Hertz mais en numeros de bandes du
+    spectrogramme : cette fonction fait la conversion. Elle renvoie une liste de
+    N+1 indices pour N bandes, comme attendu par `channels`.
+    """
+    mel_frequencies = librosa.mel_frequencies(n_mels=n_mels, fmax=sample_rate / 2)
+    names = list(config.BANDS)
+    edges = [config.BANDS[name][0] for name in names]
+    edges.append(config.BANDS[names[-1]][1])
+    return [int(np.searchsorted(mel_frequencies, edge)) for edge in edges]
+
+
+def onset_envelopes_by_band(
+    samples: np.ndarray, sample_rate: int
+) -> dict[str, np.ndarray]:
+    """Une enveloppe d'onsets par bande de frequences.
+
+    A IMPLEMENTER (amiral).
+
+    C'est le cœur du changement : au lieu d'une seule enveloppe melangeant tous
+    les instruments, on en obtient une par registre. Le grave suit le kick, le
+    medium la caisse claire — le type de note decoule donc de l'instrument, au
+    lieu d'etre devine apres coup.
+
+    Marche a suivre :
+
+    1. Spectrogramme mel (l'energie par bande de frequence, trame par trame) :
+
+           spectrogram = librosa.feature.melspectrogram(
+               y=samples, sr=sample_rate, hop_length=config.HOP_LENGTH)
+
+    2. Frontieres des bandes, deja calculees pour toi :
+
+           channels = mel_bin_boundaries(spectrogram.shape[0], sample_rate)
+
+    3. Une enveloppe par bande. `onset_strength_multi` attend un spectrogramme
+       en decibels, d'ou le passage par `librosa.power_to_db` :
+
+           envelopes = librosa.onset.onset_strength_multi(
+               S=librosa.power_to_db(spectrogram),
+               sr=sample_rate,
+               hop_length=config.HOP_LENGTH,
+               channels=channels)
+
+       Le resultat est un tableau a deux dimensions : une ligne par bande.
+
+    4. Renvoyer un dictionnaire {nom de bande: enveloppe}. Les noms sont les
+       cles de `config.BANDS`, dans le meme ordre que les lignes du resultat —
+       `enumerate(config.BANDS)` fait le lien.
+
+    Retour attendu : dict[str, np.ndarray], une entree par bande.
+
+    Tests : `test_analysis.py::TestOnsetEnvelopesByBand`
+    """
+    raise NotImplementedError("TODO(amiral): onset_envelopes_by_band")
+
+
+def quantize_to_grid(
+    times: list[float], grid: list[float], tolerance_s: float
+) -> list[float]:
+    """Recale les onsets sur la grille rythmique, et jette ceux qui en sont loin.
+
+    A IMPLEMENTER (amiral). Fonction pure : ni audio, ni librosa.
+
+    C'est ce qui rend les motifs anticipables. Un onset proche d'une subdivision
+    y est aligne — la main joue alors des croches franches plutot que des
+    instants legerement irreguliers. Un onset eloigne de toute subdivision est
+    un ornement ou du bruit : on le jette, ce qui allege aussi la partition.
+
+    Marche a suivre :
+
+    1. Pour chaque instant de `times`, trouver le point de `grid` le plus
+       proche. `grid` est triee et croissante ; en Python simple,
+       `min(grid, key=lambda g: abs(g - t))` suffit largement ici.
+
+    2. Si l'ecart absolu a ce point est <= `tolerance_s`, retenir **le point de
+       grille** (pas l'instant d'origine : tout l'interet est de l'aligner).
+       Sinon, ne rien retenir pour cet onset.
+
+    3. Dedoublonner : deux onsets proches peuvent tomber sur le meme point de
+       grille, il ne doit en rester qu'un.
+
+    4. Renvoyer la liste triee par ordre croissant.
+
+    Cas limites : une grille vide renvoie une liste vide ; la liste d'entree ne
+    doit pas etre modifiee.
+
+    Astuce : `sorted(set(resultats))` regle d'un coup le dedoublonnage et le tri.
+
+    Tests : `test_analysis.py::TestQuantizeToGrid`
+    """
+    raise NotImplementedError("TODO(amiral): quantize_to_grid")
+
+
+def beat_grid(
+    samples: np.ndarray,
+    sample_rate: int,
+    subdivisions: int = config.BEAT_SUBDIVISIONS,
+) -> list[float]:
+    """Grille rythmique du morceau : les temps, et leurs subdivisions.
+
+    `beat_track` donne la position des temps ; on interpole ensuite
+    `subdivisions` points entre chaque paire de temps consecutifs.
+    """
+    _tempo, beat_times = librosa.beat.beat_track(
+        y=samples, sr=sample_rate, hop_length=config.HOP_LENGTH, units="time"
+    )
+    if len(beat_times) < 2:
+        return [float(t) for t in beat_times]
+
+    grid: list[float] = []
+    for start, end in zip(beat_times[:-1], beat_times[1:]):
+        step = (end - start) / subdivisions
+        grid.extend(float(start + i * step) for i in range(subdivisions))
+    grid.append(float(beat_times[-1]))
+    return grid
+
+
+def grid_tolerance_s(
+    grid: list[float], ratio: float = config.QUANTIZE_TOLERANCE_RATIO
+) -> float:
+    """Tolerance de recalage, en secondes, deduite du pas de la grille."""
+    if len(grid) < 2:
+        return 0.0
+    steps = np.diff(grid)
+    return float(np.median(steps) * ratio)
+
+
+def strength_at(
+    envelope: np.ndarray, times: list[float], sample_rate: int
+) -> list[float]:
+    """Valeur de l'enveloppe aux instants donnes, pour comparer leurs forces."""
+    last = len(envelope) - 1
+    frames = [
+        min(last, max(0, int(round(time_s * sample_rate / config.HOP_LENGTH))))
+        for time_s in times
+    ]
+    return [float(envelope[frame]) for frame in frames]
+
+
 def estimate_tempo(samples: np.ndarray, sample_rate: int) -> float:
     """Tempo du morceau en BPM, purement informatif (affichage, effets visuels).
 

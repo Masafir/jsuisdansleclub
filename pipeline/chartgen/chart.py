@@ -66,6 +66,45 @@ def update_index(charts_dir: str | Path, title: str, filename: str) -> Path:
     return index_path
 
 
+def notes_from_bands(
+    samples, sample_rate: int
+) -> tuple[list[float], list[notes.NoteType]]:
+    """Analyse par bandes : chaque registre produit son propre type de note."""
+    envelopes = analysis.onset_envelopes_by_band(samples, sample_rate)
+    grid = analysis.beat_grid(samples, sample_rate)
+    tolerance = analysis.grid_tolerance_s(grid)
+
+    band_times: dict[str, list[float]] = {}
+    for band, envelope in envelopes.items():
+        if config.BAND_NOTE_TYPE.get(band) is None:
+            continue  # bande volontairement ignoree (le charleston, par defaut)
+
+        detected = analysis.detect_onset_times(envelope, sample_rate)
+        strengths = analysis.strength_at(envelope, detected, sample_rate)
+        strongest = notes.select_strongest(detected, strengths, config.MIN_NOTE_GAP_S)
+        band_times[band] = analysis.quantize_to_grid(strongest, grid, tolerance)
+
+    return notes.merge_bands(band_times, config.MIN_NOTE_GAP_S)
+
+
+def notes_from_full_spectrum(
+    samples, sample_rate: int
+) -> tuple[list[float], list[notes.NoteType]]:
+    """Analyse large bande : une seule detection, type devine note par note.
+
+    Conservee pour comparaison, via config.USE_BAND_ANALYSIS.
+    """
+    envelope = analysis.onset_envelope(samples, sample_rate)
+    onset_times = analysis.detect_onset_times(envelope, sample_rate)
+    playable_times = notes.enforce_min_gap(onset_times, config.MIN_NOTE_GAP_S)
+
+    note_types = [
+        notes.classify_note_type(*analysis.band_energies(samples, sample_rate, time_s))
+        for time_s in playable_times
+    ]
+    return playable_times, note_types
+
+
 def generate_chart(audio_path: str, title: str, audio_url: str) -> dict:
     """Chaine complete : un fichier audio en entree, une partition en sortie.
 
@@ -74,21 +113,15 @@ def generate_chart(audio_path: str, title: str, audio_url: str) -> dict:
     """
     samples, sample_rate = analysis.load_audio(audio_path)
 
-    envelope = analysis.onset_envelope(samples, sample_rate)
-    onset_times = analysis.detect_onset_times(envelope, sample_rate)
-    playable_times = notes.enforce_min_gap(onset_times, config.MIN_NOTE_GAP_S)
-
-    note_types = [
-        notes.classify_note_type(
-            *analysis.band_energies(samples, sample_rate, time_s)
-        )
-        for time_s in playable_times
-    ]
+    if config.USE_BAND_ANALYSIS:
+        times, note_types = notes_from_bands(samples, sample_rate)
+    else:
+        times, note_types = notes_from_full_spectrum(samples, sample_rate)
 
     return build_chart(
         title=title,
         audio_url=audio_url,
         duration_ms=analysis.duration_ms(samples, sample_rate),
         bpm=analysis.estimate_tempo(samples, sample_rate),
-        note_list=notes.times_to_notes(playable_times, note_types),
+        note_list=notes.times_to_notes(times, note_types),
     )

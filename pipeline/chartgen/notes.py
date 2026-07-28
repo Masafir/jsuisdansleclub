@@ -56,6 +56,85 @@ def enforce_min_gap(times: list[float], min_gap_s: float) -> list[float]:
     return result
 
 
+def select_strongest(
+    times: list[float], strengths: list[float], min_gap_s: float
+) -> list[float]:
+    """Ne garde qu'une attaque par groupe : la plus forte.
+
+    A IMPLEMENTER (amiral). Fonction pure.
+
+    Remplace `enforce_min_gap` pour la selection finale. La difference est
+    importante : `enforce_min_gap` garde la plus *precoce* d'un groupe, ce qui
+    laisse une pre-echo ou une queue de reverberation evincer la vraie frappe.
+    Ici on garde la plus *forte*, donc l'attaque reelle.
+
+    Marche a suivre — c'est un algorithme glouton classique :
+
+    1. Verifier que `times` et `strengths` ont la meme longueur, sinon lever une
+       ValueError.
+
+    2. Parcourir les instants **du plus fort au plus faible**. Pour trier les
+       indices par force decroissante :
+
+           ordre = sorted(range(len(times)), key=lambda i: strengths[i], reverse=True)
+
+    3. Accepter un instant seulement s'il est distant d'au moins `min_gap_s` de
+       **tous** ceux deja acceptes. Comme on traite les plus forts d'abord, un
+       instant rejete l'est forcement au profit d'un plus fort : c'est ce qui
+       garantit qu'on garde le bon.
+
+    4. Renvoyer la liste des instants acceptes, **triee par ordre croissant**
+       (l'ordre de traitement est celui des forces, pas celui du temps).
+
+    Cas limites : listes vides -> liste vide ; un ecart exactement egal a
+    `min_gap_s` est accepte.
+
+    Tests : `test_notes.py::TestSelectStrongest`
+    """
+    raise NotImplementedError("TODO(amiral): select_strongest")
+
+
+def merge_bands(
+    band_times: dict[str, list[float]], min_gap_s: float
+) -> tuple[list[float], list[NoteType]]:
+    """Fusionne les detections par bande en une seule suite de notes typees.
+
+    A IMPLEMENTER (amiral). Fonction pure.
+
+    Chaque bande a produit ses instants ; il faut maintenant en faire une
+    partition unique, ou chaque note porte le type de la bande dont elle vient.
+
+    Marche a suivre :
+
+    1. Traduire chaque bande en type de note via `config.BAND_NOTE_TYPE`.
+       Une bande dont le type vaut `None` est **ignoree** (c'est le cas du
+       charleston par defaut) : ne rien produire pour elle.
+
+    2. Rassembler tous les couples (instant, type) des bandes retenues.
+
+    3. Resoudre les collisions : deux notes distantes de moins de `min_gap_s`
+       sont injouables. On garde celle dont la bande vient **en premier dans
+       `config.BANDS`** — l'ordre y est deliberement LOW, MID, HIGH, car le
+       kick est l'ancre rythmique et doit l'emporter sur la caisse claire.
+
+       Facon simple d'y arriver : trier les couples par (instant croissant,
+       priorite de bande), puis les parcourir en ne conservant un couple que
+       s'il est assez loin du dernier conserve.
+
+       La priorite d'une bande, c'est son rang :
+           priorite = list(config.BANDS).index(nom_de_bande)
+
+    4. Renvoyer deux listes paralleles : les instants et les types, dans
+       l'ordre chronologique. C'est exactement ce qu'attend `times_to_notes`.
+
+    Cas limites : dictionnaire vide -> ([], []) ; une bande sans instant est
+    sans effet.
+
+    Tests : `test_notes.py::TestMergeBands`
+    """
+    raise NotImplementedError("TODO(amiral): merge_bands")
+
+
 def classify_note_type(
     low_energy: float,
     high_energy: float,
