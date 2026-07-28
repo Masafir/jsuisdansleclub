@@ -33,13 +33,64 @@ bibliothèque du jeu au rechargement de la page.
 | `classify_note_type` | `notes.py` | grave → DON, aigu → KA |
 | `times_to_notes` | `notes.py` | conversion au format de partition |
 
+Les 27 tests passent au vert quand les cinq fonctions sont écrites. Ceux de
+`test_notes.py` portent sur des fonctions pures et n'utilisent aucun fichier
+audio ; ceux de `test_analysis.py` fabriquent leurs signaux à la main.
+
+## Lancer les tests
+
+Toute la suite :
+
 ```bash
 cd pipeline && .venv/bin/pytest
 ```
 
-Les 27 tests passent au vert quand les cinq fonctions sont écrites. Ceux de
-`test_notes.py` portent sur des fonctions pures et n'utilisent aucun fichier
-audio ; ceux de `test_analysis.py` fabriquent leurs signaux à la main.
+**Un test précis** — le chemin du fichier, puis `::` entre chaque niveau
+(fichier, classe, fonction) :
+
+```bash
+cd pipeline && .venv/bin/pytest tests/test_analysis.py::test_onset_envelope_detecte_les_impulsions -v
+```
+
+**Par motif de nom**, le plus pratique quand on travaille sur une fonction :
+lance tout ce dont le nom contient le motif, sans avoir à taper le chemin.
+
+```bash
+cd pipeline && .venv/bin/pytest -k "enforce_min_gap" -v
+```
+
+Options utiles :
+
+| Option | Effet |
+|---|---|
+| `-v` | une ligne par test, avec son nom — indispensable pour voir quel cas casse |
+| `-k "motif"` | ne garde que les tests dont le nom contient le motif |
+| `-x` | s'arrête au premier échec, pour itérer vite |
+| `--tb=short` | trace d'erreur compacte (`--tb=line` pour une seule ligne) |
+| `-q` | sortie minimale, juste le compte final |
+| `tests/test_notes.py::TestEnforceMinGap` | toute une classe d'un coup |
+
+Côté client, vitest suit les mêmes principes : `npm test -- -t "motif"` filtre
+par nom de test, `npm test src/game/judge.test.ts` ne lance qu'un fichier, et
+`npm run test:watch` relance automatiquement à chaque sauvegarde.
+
+## Pièges connus
+
+**librosa exige des arguments nommés.** Depuis la version 0.10, presque toute
+son API refuse les arguments positionnels :
+
+```
+TypeError: onset_strength() takes 0 positional arguments but 3 were given
+```
+
+Il faut écrire `librosa.onset.onset_strength(y=..., sr=..., hop_length=...)`.
+C'est délibéré de leur part : les signatures ont beaucoup bougé au fil des
+versions, et forcer les noms évite qu'un ordre d'arguments obsolète passe
+silencieusement en donnant un résultat faux.
+
+**Ne pas afficher l'enveloppe trame par trame** pour l'inspecter : il y en a une
+toutes les 23 ms, soit ~7500 lignes pour trois minutes de musique.
+`print(envelope.shape, envelope.max(), envelope.mean())` donne l'essentiel.
 
 ## Équilibrage
 
