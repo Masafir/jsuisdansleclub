@@ -64,6 +64,7 @@ Options utiles :
 | Option | Effet |
 |---|---|
 | `-v` | une ligne par test, avec son nom — indispensable pour voir quel cas casse |
+| `-s` | affiche les `print` du code testé (pytest capture la sortie par défaut et ne la restitue que sur un échec) |
 | `-k "motif"` | ne garde que les tests dont le nom contient le motif |
 | `-x` | s'arrête au premier échec, pour itérer vite |
 | `--tb=short` | trace d'erreur compacte (`--tb=line` pour une seule ligne) |
@@ -89,8 +90,19 @@ versions, et forcer les noms évite qu'un ordre d'arguments obsolète passe
 silencieusement en donnant un résultat faux.
 
 **Ne pas afficher l'enveloppe trame par trame** pour l'inspecter : il y en a une
-toutes les 23 ms, soit ~7500 lignes pour trois minutes de musique.
-`print(envelope.shape, envelope.max(), envelope.mean())` donne l'essentiel.
+toutes les 23 ms, soit ~7500 lignes pour trois minutes de musique, presque
+toutes à zéro. Pour voir ce qui s'y passe vraiment, n'afficher que ce qui
+dépasse le seuil :
+
+```python
+seuil = envelope.mean() + config.ONSET_SENSITIVITY * envelope.std()
+print("forme", envelope.shape, "| max", envelope.max(), "| moyenne", envelope.mean())
+for i in np.where(envelope > seuil)[0]:
+    print(f"  trame {i}  t={i * config.HOP_LENGTH / config.SAMPLE_RATE:.3f}s  {envelope[i]:.2f}")
+```
+
+`np.where(condition)[0]` renvoie les indices où la condition est vraie : c'est
+l'outil de base pour interroger un tableau numpy sans le parcourir à la main.
 
 ## Équilibrage
 
