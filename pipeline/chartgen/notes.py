@@ -91,7 +91,18 @@ def select_strongest(
 
     Tests : `test_notes.py::TestSelectStrongest`
     """
-    raise NotImplementedError("TODO(amiral): select_strongest")
+    if len(times) != len(strengths):
+        raise ValueError("Oups times et strengths non pas la même longueur")
+
+    ordre = sorted(range(len(times)), key=lambda i: strengths[i], reverse=True)
+    result = []
+    for o in ordre:
+        t = times[o]
+        if all(abs(t - accepted) >= min_gap_s for accepted in result):
+            result.append(t)
+    return sorted(result)
+
+
 
 
 def merge_bands(
@@ -110,19 +121,23 @@ def merge_bands(
        Une bande dont le type vaut `None` est **ignoree** (c'est le cas du
        charleston par defaut) : ne rien produire pour elle.
 
-    2. Rassembler tous les couples (instant, type) des bandes retenues.
+    2. Rassembler des **triplets** (instant, priorite, type) pour les bandes
+       retenues. La priorite doit etre calculee dans la boucle, tant que le nom
+       de la bande est encore connu — c'est son rang dans config.BANDS :
+
+           priorite = list(config.BANDS).index(nom_de_bande)
+
+       Un couple (instant, type) ne suffirait pas : le type ne dit pas de
+       quelle bande la note vient, et l'etape suivante en a besoin.
 
     3. Resoudre les collisions : deux notes distantes de moins de `min_gap_s`
        sont injouables. On garde celle dont la bande vient **en premier dans
        `config.BANDS`** — l'ordre y est deliberement LOW, MID, HIGH, car le
        kick est l'ancre rythmique et doit l'emporter sur la caisse claire.
 
-       Facon simple d'y arriver : trier les couples par (instant croissant,
-       priorite de bande), puis les parcourir en ne conservant un couple que
-       s'il est assez loin du dernier conserve.
-
-       La priorite d'une bande, c'est son rang :
-           priorite = list(config.BANDS).index(nom_de_bande)
+       Facon simple d'y arriver : trier les triplets sur leurs deux premiers
+       elements (instant croissant, puis priorite), puis les parcourir en ne
+       conservant un triplet que s'il est assez loin du dernier conserve.
 
     4. Renvoyer deux listes paralleles : les instants et les types, dans
        l'ordre chronologique. C'est exactement ce qu'attend `times_to_notes`.
@@ -132,7 +147,23 @@ def merge_bands(
 
     Tests : `test_notes.py::TestMergeBands`
     """
-    raise NotImplementedError("TODO(amiral): merge_bands")
+    couples = []
+    for band, times in band_times.items():
+        note_type = config.BAND_NOTE_TYPE.get(band)
+        if note_type is not None:
+            couples.extend((t, note_type) for t in times)
+
+    # Tri par (instant croissant, priorite de bande)
+    couples.sort(key=lambda pair: (pair[0], list(config.BANDS).index(pair[1])))
+
+    result_times = []
+    result_types = []
+    for t, note_type in couples:
+        if not result_times or t - result_times[-1] >= min_gap_s:
+            result_times.append(t)
+            result_types.append(note_type)
+
+    return result_times, result_types
 
 
 def classify_note_type(
