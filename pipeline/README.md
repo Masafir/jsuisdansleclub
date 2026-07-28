@@ -3,8 +3,52 @@
 Service Python de l'**étape 3** de la roadmap (voir [DECISIONS.md](../DECISIONS.md)) :
 une URL YouTube ou un fichier audio entre, un MP3 et une partition JSON sortent.
 
-Rien n'est encore implémenté ici — c'est du périmètre d'amiral (`yt-dlp` pour le
-téléchargement, `librosa` pour le beat tracking et la détection d'onsets).
+Le téléchargement YouTube (`yt-dlp`) reste à faire. La **génération de partition
+par détection d'onsets** est en place, avec cinq fonctions à implémenter.
+
+## Installation
+
+```bash
+cd pipeline && python3 -m venv .venv && .venv/bin/pip install librosa pytest
+```
+
+Compter ~500 Mo : librosa tire numpy, scipy, numba et scikit-learn.
+
+## Utilisation
+
+```bash
+cd pipeline && .venv/bin/python -m chartgen ../client/public/audio/test-song.mp3 --title "Mon morceau"
+```
+
+La partition atterrit dans `client/public/charts/` et apparaît dans la
+bibliothèque du jeu au rechargement de la page.
+
+## À implémenter (amiral)
+
+| Fonction | Fichier | Ce qu'elle décide |
+|---|---|---|
+| `onset_envelope` | `analysis.py` | appel librosa du flux spectral |
+| `detect_onset_times` | `analysis.py` | seuillage : quelle attaque compte vraiment |
+| `enforce_min_gap` | `notes.py` | densité jouable |
+| `classify_note_type` | `notes.py` | grave → DON, aigu → KA |
+| `times_to_notes` | `notes.py` | conversion au format de partition |
+
+```bash
+cd pipeline && .venv/bin/pytest
+```
+
+Les 27 tests passent au vert quand les cinq fonctions sont écrites. Ceux de
+`test_notes.py` portent sur des fonctions pures et n'utilisent aucun fichier
+audio ; ceux de `test_analysis.py` fabriquent leurs signaux à la main.
+
+## Équilibrage
+
+Une partition brute est rarement amusable du premier coup : c'est
+`chartgen/config.py` qui fait la différence. `ONSET_SENSITIVITY` d'abord (monter
+la valeur pour moins de notes), puis `MIN_NOTE_GAP_S` (densité maximale) et
+`KA_ENERGY_RATIO` (proportion de KA). La CLI affiche après chaque génération le
+nombre de notes par seconde et la répartition DON/KA, les deux chiffres qui
+disent si un réglage va dans le bon sens.
 
 ## `prototype/estimate_tempo.py`
 

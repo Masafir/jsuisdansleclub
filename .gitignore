@@ -2,6 +2,7 @@
 node_modules/
 .venv/
 __pycache__/
+.pytest_cache/
 
 # Builds
 dist/
@@ -21,6 +22,9 @@ go*.linux-amd64.tar.gz
 client/public/audio/*
 !client/public/audio/README.md
 !client/public/audio/sfx-*.mp3
+
+# Partitions générées : artefacts dérivés, régénérables depuis l'audio.
+client/public/charts/
 
 # Environnement
 .env

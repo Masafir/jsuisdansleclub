@@ -53,6 +53,17 @@ Fenêtres de jugement : ±40 ms `PERFECT`, ±90 ms `GOOD`, au-delà `MISS`.
 - **La partition de test est du code, pas un JSON** (`client/src/chart/testChart.ts`) : elle génère les notes procéduralement. Le format JSON n'apparaîtra qu'avec le pipeline, quand il faudra transporter des partitions générées.
 - **Un prototype d'estimation de tempo est conservé** dans `pipeline/prototype/` : sans dépendance (ffmpeg seul), il donne BPM et offset d'un morceau. Il ne remplace pas librosa — il travaille sur l'énergie totale, pas sur le flux spectral — mais il documente la méthode et dépanne pour caler une partition à la main.
 
+## Génération de partitions (28 juil. 2026)
+
+La partition métronome (une note par temps) n'est pas amusante, et aucun réglage ne la sauvera : elle ne dépend pas de la musique et serait identique sur tout morceau au même tempo. Décisions prises :
+
+- **Les notes suivent les onsets, pas une grille.** Le tempo n'est plus qu'une information affichée. C'est la seule façon de jouer *la chanson* plutôt que de taper sur une horloge.
+- **Détection par flux spectral** (`librosa.onset.onset_strength`), pas par énergie. Une caisse claire par-dessus une nappe de synthé ne change presque pas le volume global mais bouleverse la répartition des fréquences — l'énergie seule la rate.
+- **DON/KA déduits du contenu fréquentiel** de l'attaque, avec une frontière à 400 Hz : grave (kick, basse) → DON, aigu (caisse claire, charleston) → KA. C'est la logique du vrai taiko (centre grave / bord claquant), et elle produit des motifs musicaux gratuitement puisque le morceau alterne déjà kick et snare. Le seuil favorise le DON en cas d'égalité, pour que les KA restent des accents.
+- **Deux filtrages de densité** : un juste après la détection (une frappe s'étale sur plusieurs trames), un sur la partition finale (jouabilité à deux mains).
+- **Les partitions générées sont des artefacts non versionnés**, régénérables depuis l'audio. Le pipeline maintient un `client/public/charts/index.json`, sans lequel le navigateur ne pourrait pas savoir quelles partitions existent — on ne liste pas un dossier en HTTP.
+- **La partition métronome est conservée** comme point de comparaison : c'est elle qui dira si la génération apporte vraiment quelque chose.
+
 ## Principes d'architecture (découlent de la nature du jeu)
 
 1. **La détection de hit est 100 % locale.** Le client juge chaque hit contre son horloge audio et envoie le résultat (score/combo) au serveur. Le serveur ne valide pas les hits en temps réel (anticheat = problème post-MVP).
