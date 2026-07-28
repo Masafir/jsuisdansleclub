@@ -66,9 +66,25 @@ def update_index(charts_dir: str | Path, title: str, filename: str) -> Path:
     return index_path
 
 
+def mark_accent_notes(
+    note_list: list[dict], accent_spans_s: list[tuple[float, float]]
+) -> list[dict]:
+    """Marque les notes tombant dans un moment fort.
+
+    Le client s'en sert pour les auréoler : le joueur voit la relance arriver
+    avant de devoir la jouer, ce qui transforme une difficulte subie en montee
+    annoncee.
+    """
+    for note in note_list:
+        time_s = note["timeMs"] / 1000
+        if any(start <= time_s < end for start, end in accent_spans_s):
+            note["accent"] = True
+    return note_list
+
+
 def notes_from_bands(
     samples, sample_rate: int
-) -> tuple[list[float], list[notes.NoteType]]:
+) -> tuple[list[float], list[notes.NoteType], list[tuple[float, float]]]:
     """Analyse par bandes : chaque registre produit son propre type de note."""
     envelopes = analysis.onset_envelopes_by_band(samples, sample_rate)
 
@@ -90,6 +106,7 @@ def notes_from_bands(
     #    sans transformer tout le morceau en soupe.
     grid: list[float] = []
     tolerance = 0.0
+    accent_spans: list[tuple[float, float]] = []
     if config.USE_GRID_QUANTIZATION:
         beats = analysis.beat_times(samples, sample_rate)
         all_onsets = sorted(t for times in detected.values() for t in times)
@@ -97,6 +114,11 @@ def notes_from_bands(
         accents = analysis.find_accent_beats(density)
         grid = analysis.variable_grid(beats, accents)
         tolerance = analysis.grid_tolerance_s(grid)
+        accent_spans = [
+            (beats[index], beats[index + 1])
+            for index in sorted(accents)
+            if index + 1 < len(beats)
+        ]
 
     # 3. Recaler, puis arbitrer les collisions a l'intensite.
     band_times: dict[str, list[float]] = {}
@@ -115,7 +137,10 @@ def notes_from_bands(
             envelopes[band], final, sample_rate
         )
 
-    return notes.merge_bands(band_times, band_strengths, config.MIN_NOTE_GAP_S)
+    times, types = notes.merge_bands(
+        band_times, band_strengths, config.MIN_NOTE_GAP_S
+    )
+    return times, types, accent_spans
 
 
 def notes_from_full_spectrum(
@@ -145,14 +170,19 @@ def generate_chart(audio_path: str, title: str, audio_url: str) -> dict:
     samples, sample_rate = analysis.load_audio(audio_path)
 
     if config.USE_BAND_ANALYSIS:
-        times, note_types = notes_from_bands(samples, sample_rate)
+        times, note_types, accent_spans = notes_from_bands(samples, sample_rate)
     else:
         times, note_types = notes_from_full_spectrum(samples, sample_rate)
+        accent_spans = []
+
+    note_list = mark_accent_notes(
+        notes.times_to_notes(times, note_types), accent_spans
+    )
 
     return build_chart(
         title=title,
         audio_url=audio_url,
         duration_ms=analysis.duration_ms(samples, sample_rate),
         bpm=analysis.estimate_tempo(samples, sample_rate),
-        note_list=notes.times_to_notes(times, note_types),
+        note_list=note_list,
     )

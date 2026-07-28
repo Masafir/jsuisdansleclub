@@ -109,6 +109,15 @@ export const HIGHWAY = {
   /** Marge hors écran avant de cesser d'afficher une note, en pixels. */
   CULL_MARGIN_PX: 80,
   /**
+   * Halo des notes appartenant à un moment fort. Il rend la montée visible
+   * avant qu'elle n'arrive : la difficulté est annoncée, donc préparable.
+   */
+  ACCENT_HALO_LAYERS: 3,
+  /** Élargissement de chaque anneau de halo, en pixels. */
+  ACCENT_HALO_STEP_PX: 6,
+  /** Opacité de l'anneau le plus intérieur ; les suivants s'estompent. */
+  ACCENT_HALO_ALPHA: 0.5,
+  /**
    * Marge de sécurité sur la durée de survie d'une note ratée : 1 = elle
    * disparaît pile au bord gauche, 1.5 = elle continue un peu au-delà pour que
    * sa sortie ne se voie pas.

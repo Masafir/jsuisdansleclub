@@ -14,6 +14,14 @@ export interface Note {
   /** Instant du hit, en millisecondes depuis le début du morceau. */
   timeMs: number;
   type: NoteType;
+  /**
+   * Note appartenant à un moment fort du morceau — roulement, relance. Le rendu
+   * les auréole pour que le joueur voie la montée arriver.
+   *
+   * Optionnel : les partitions générées avant cette notion n'en ont pas, et
+   * l'absence vaut `false`.
+   */
+  accent?: boolean;
 }
 
 export interface Chart {

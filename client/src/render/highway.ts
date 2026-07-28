@@ -13,7 +13,6 @@ import {
   HIGHWAY,
   JUDGE_CIRCLE,
   type Judgement,
-  type NoteType,
 } from '../config/gameplay';
 import { HIGHWAY_COLORS, NOTE_COLORS, FEEDBACK_COLORS, GRADIENTS } from '../config/theme';
 import type { Note } from '../chart/types';
@@ -125,7 +124,7 @@ export class HighwayRenderer {
     for (const note of notes) {
       let graphic = this.noteGraphics.get(note);
       if (!graphic) {
-        graphic = this.createNoteGraphic(note.type);
+        graphic = this.createNoteGraphic(note);
         this.noteGraphics.set(note, graphic);
         this.noteLayer.addChild(graphic);
       }
@@ -189,10 +188,27 @@ export class HighwayRenderer {
     this.judge.scale.set(breath + impact);
   }
 
-  private createNoteGraphic(type: NoteType): Graphics {
-    return new Graphics()
+  private createNoteGraphic(note: Note): Graphics {
+    const graphic = new Graphics();
+    const color = NOTE_COLORS[note.type];
+
+    // Les notes des moments forts portent un halo de leur propre couleur : la
+    // relance se voit venir de loin, au lieu de surprendre à l'arrivée.
+    if (note.accent) {
+      for (let layer = HIGHWAY.ACCENT_HALO_LAYERS; layer > 0; layer--) {
+        graphic
+          .circle(0, 0, HIGHWAY.NOTE_RADIUS_PX + layer * HIGHWAY.ACCENT_HALO_STEP_PX)
+          .stroke({
+            color,
+            width: HIGHWAY.ACCENT_HALO_STEP_PX,
+            alpha: HIGHWAY.ACCENT_HALO_ALPHA / layer,
+          });
+      }
+    }
+
+    return graphic
       .circle(0, 0, HIGHWAY.NOTE_RADIUS_PX)
-      .fill({ color: NOTE_COLORS[type] })
+      .fill({ color })
       .stroke({ color: HIGHWAY_COLORS.JUDGE_CIRCLE, width: 2, alpha: 0.8 });
   }
 
