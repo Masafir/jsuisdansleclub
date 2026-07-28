@@ -52,13 +52,13 @@ export function noteTypeForKey(key: string): NoteType | undefined {
  * vaut GOOD, au-delà c'est MISS.
  */
 export const TIMING = {
-  PERFECT_WINDOW_MS: 40,
-  GOOD_WINDOW_MS: 90,
+  PERFECT_WINDOW_MS: 55,
+  GOOD_WINDOW_MS: 130,
   /**
    * Au-delà de cet écart, une note n'est plus candidate à un appui : le joueur
    * visait forcément une autre note. Doit être >= GOOD_WINDOW_MS.
    */
-  CANDIDATE_WINDOW_MS: 150,
+  CANDIDATE_WINDOW_MS: 220,
 } as const;
 
 /** Points et combo. */
@@ -169,6 +169,11 @@ export const CALIBRATION = {
   MAX_OFFSET_MS: 500,
   /** Clé de stockage local de l'offset du joueur. */
   STORAGE_KEY: 'jsuisdansleclub.calibrationOffsetMs',
+  /**
+   * Écart moyen à partir duquel on propose une correction en fin de partie.
+   * En dessous, le décalage se confond avec l'imprécision naturelle du joueur.
+   */
+  SUGGEST_THRESHOLD_MS: 20,
 } as const;
 
 /**

@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import type { Chart } from '../chart/types';
 import type { SessionSnapshot } from '../game/session';
-import { JUDGEMENTS } from '../config/gameplay';
+import { CALIBRATION, JUDGEMENTS } from '../config/gameplay';
+import { readCalibrationOffsetMs, writeCalibrationOffsetMs } from '../game/calibration';
 
 interface ResultScreenProps {
   chart: Chart;
@@ -10,6 +12,68 @@ interface ResultScreenProps {
 }
 
 const PERCENT = 100;
+
+/**
+ * Diagnostic de décalage systématique.
+ *
+ * Un joueur imprécis se trompe dans les deux sens et sa moyenne reste proche de
+ * zéro. Une moyenne franchement décalée trahit autre chose : la latence de
+ * sortie audio du matériel, ou des notes générées légèrement tardives. C'est
+ * corrigeable d'un coup, alors qu'élargir les fenêtres ne ferait que le
+ * dissimuler.
+ */
+function TimingAdvice({ meanDeltaMs }: { meanDeltaMs: number | null }) {
+  const [applied, setApplied] = useState<number | null>(null);
+
+  if (meanDeltaMs === null) return null;
+
+  const rounded = Math.round(meanDeltaMs);
+  const isLate = rounded > 0;
+  const matters = Math.abs(rounded) >= CALIBRATION.SUGGEST_THRESHOLD_MS;
+
+  return (
+    <section className="panel">
+      <h2 className="panel__title">Timing</h2>
+      <p className="timing">
+        Tu frappes en moyenne{' '}
+        <strong>
+          {Math.abs(rounded)} ms {isLate ? 'en retard' : 'en avance'}
+        </strong>
+        .
+      </p>
+
+      {!matters && (
+        <p className="hint">
+          C'est négligeable : ton décalage vient de toi, pas de ton matériel.
+        </p>
+      )}
+
+      {matters && applied === null && (
+        <>
+          <p className="hint">
+            Assez régulier pour venir de ta latence audio plutôt que de ton jeu.
+            La corriger décalera les fenêtres de jugement d'autant.
+          </p>
+          <button
+            className="button"
+            onClick={() =>
+              setApplied(writeCalibrationOffsetMs(readCalibrationOffsetMs() + rounded))
+            }
+          >
+            Corriger ce décalage
+          </button>
+        </>
+      )}
+
+      {applied !== null && (
+        <p className="hint">
+          Décalage enregistré ({applied > 0 ? '+' : ''}
+          {applied} ms). Il s'appliquera dès la prochaine partie.
+        </p>
+      )}
+    </section>
+  );
+}
 
 export function ResultScreen({
   chart,
@@ -48,6 +112,8 @@ export function ResultScreen({
           ))}
         </dl>
       </section>
+
+      <TimingAdvice meanDeltaMs={snapshot.meanDeltaMs} />
 
       <div className="row">
         <button className="button" onClick={onRetry}>

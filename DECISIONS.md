@@ -53,6 +53,15 @@ Fenêtres de jugement : ±40 ms `PERFECT`, ±90 ms `GOOD`, au-delà `MISS`.
 - **La partition de test est du code, pas un JSON** (`client/src/chart/testChart.ts`) : elle génère les notes procéduralement. Le format JSON n'apparaîtra qu'avec le pipeline, quand il faudra transporter des partitions générées.
 - **Un prototype d'estimation de tempo est conservé** dans `pipeline/prototype/` : sans dépendance (ffmpeg seul), il donne BPM et offset d'un morceau. Il ne remplace pas librosa — il travaille sur l'énergie totale, pas sur le flux spectral — mais il documente la méthode et dépanne pour caler une partition à la main.
 
+## Difficulté et calibration (28 juil. 2026)
+
+Le jeu était trop dur avec les fenêtres d'origine (±40 / ±90 ms). Deux causes distinctes, traitées séparément :
+
+- **Fenêtres élargies** à ±55 ms (PERFECT) et ±130 ms (GOOD), fenêtre candidate à 220 ms. Plus généreux qu'un jeu charté à la main, et c'est justifié : les notes générées par détection d'onsets ont une imprécision propre de ~23 ms (la résolution d'analyse) et tombent légèrement après l'attaque réelle.
+- **La calibration se mesure en jouant**, pas au métronome. L'écran de fin affiche l'écart moyen des appuis et propose de le corriger d'un clic. Un joueur imprécis se trompe dans les deux sens et sa moyenne reste proche de zéro ; une moyenne franchement décalée trahit la latence du matériel ou des notes tardives. Cette mesure est plus fidèle qu'un test au métronome puisqu'elle intègre toute la chaîne, y compris le biais du générateur de partitions.
+
+Élargir les fenêtres et corriger un décalage systématique ne sont pas interchangeables : le second se voit dans la moyenne, le premier dans la dispersion.
+
 ## Génération de partitions (28 juil. 2026)
 
 La partition métronome (une note par temps) n'est pas amusante, et aucun réglage ne la sauvera : elle ne dépend pas de la musique et serait identique sur tout morceau au même tempo. Décisions prises :

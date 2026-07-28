@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { HighwayRenderer } from '../render/highway';
 import { GameSession, type SessionSnapshot } from '../game/session';
-import { CALIBRATION, HIGHWAY, SURVIVAL } from '../config/gameplay';
+import { HIGHWAY, SURVIVAL } from '../config/gameplay';
+import { readCalibrationOffsetMs } from '../game/calibration';
 import type { Chart } from '../chart/types';
 import { Hud } from './Hud';
 import { KeyLegend } from './KeyLegend';
@@ -10,12 +11,6 @@ interface GameScreenProps {
   chart: Chart;
   onFinished: (snapshot: SessionSnapshot) => void;
   onQuit: () => void;
-}
-
-function readCalibrationOffsetMs(): number {
-  const stored = localStorage.getItem(CALIBRATION.STORAGE_KEY);
-  const parsed = stored === null ? Number.NaN : Number(stored);
-  return Number.isFinite(parsed) ? parsed : CALIBRATION.DEFAULT_OFFSET_MS;
 }
 
 export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {

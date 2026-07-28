@@ -109,10 +109,8 @@ def detect_onset_times(
     seuil = envelope.mean() + sensitivity * envelope.std()
     frames = []
     for i in range(1, len(envelope) - 1):
-        print("FRAME", i, envelope[i], envelope[i - 1], envelope[i + 1], seuil)
         if envelope[i] > seuil and envelope[i] > envelope[i - 1] and envelope[i] > envelope[i + 1]:
             # C'est un pic au-dessus du seuil
-            print("PIC DETECTE", i, envelope[i])
             new_time = librosa.frames_to_time(i, sr=sample_rate, hop_length=config.HOP_LENGTH)
             frames.append(new_time)
 

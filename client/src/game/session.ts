@@ -32,6 +32,15 @@ export interface SessionSnapshot {
   countdownStep: number | null;
   lastJudgement: Judgement | null;
   songTimeMs: number;
+  /**
+   * Écart moyen des appuis, en ms : positif = le joueur frappe en retard.
+   * `null` tant qu'aucune touche n'a visé une note.
+   *
+   * Un écart moyen important révèle un décalage systématique (latence audio,
+   * notes générées légèrement tardives) plutôt qu'un manque de précision : il
+   * se corrige par la calibration, pas en élargissant les fenêtres.
+   */
+  meanDeltaMs: number | null;
 }
 
 export interface GameSessionOptions {
@@ -61,6 +70,9 @@ export class GameSession {
    * gauche : c'est ce qui distingue visuellement un échec d'une réussite.
    */
   private missedNotes: Note[] = [];
+  /** Somme et nombre des écarts mesurés, pour en tirer une moyenne. */
+  private deltaSumMs = 0;
+  private deltaCount = 0;
   /** Passe à true dès `stop()` : empêche un démarrage tardif après démontage. */
   private disposed = false;
 
@@ -122,6 +134,11 @@ export class GameSession {
 
     const result = this.judge.hit(this.clock.getInputTimeMs(), type);
     if (!result) return;
+
+    // Tout appui ayant vise une note compte, y compris raté : c'est justement
+    // un décalage systématique qui produit des ratés.
+    this.deltaSumMs += result.deltaMs;
+    this.deltaCount++;
 
     this.tracker.register(result.judgement);
     this.lastJudgement = result.judgement;
@@ -195,6 +212,8 @@ export class GameSession {
     this.source = null;
     this.status = 'idle';
     this.missedNotes = [];
+    this.deltaSumMs = 0;
+    this.deltaCount = 0;
     this.renderer.clear();
   }
 
@@ -211,6 +230,7 @@ export class GameSession {
       countdownStep,
       lastJudgement: this.lastJudgement,
       songTimeMs,
+      meanDeltaMs: this.deltaCount === 0 ? null : this.deltaSumMs / this.deltaCount,
     });
   }
 }
