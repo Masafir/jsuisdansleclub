@@ -23,20 +23,44 @@ cd pipeline && .venv/bin/python -m chartgen ../client/public/audio/test-song.mp3
 La partition atterrit dans `client/public/charts/` et apparaît dans la
 bibliothèque du jeu au rechargement de la page.
 
-## À implémenter (amiral)
+## Qui a écrit quoi
 
-| Fonction | Fichier | Ce qu'elle décide |
-|---|---|---|
-| `onset_envelopes_by_band` | `analysis.py` | une enveloppe par registre |
-| `quantize_to_grid` | `analysis.py` | recaler sur la grille, ou jeter |
-| `select_strongest` | `notes.py` | garder la plus forte d'un groupe |
-| `merge_bands` | `notes.py` | fusionner les bandes en notes typées |
+Le cœur de détection (`onset_envelope`, `detect_onset_times`,
+`enforce_min_gap`, `classify_note_type`, `times_to_notes`,
+`onset_envelopes_by_band`, `quantize_to_grid`, `select_strongest`) est
+**implémenté par amiral**, validé par les tests. La couche « charter »
+(`phrases.py`, `stems.py`) et l'orchestration ont été écrites par l'agent, à la
+demande d'amiral.
 
-Trois sur quatre sont des **fonctions pures** : leurs tests n'utilisent aucun
-fichier audio et sont instantanés. Déjà écrites : `onset_envelope`,
-`detect_onset_times`, `enforce_min_gap`, `classify_note_type`, `times_to_notes`.
+## Analyse par pistes séparées (le mode principal)
 
-## Comment fonctionne l'analyse
+Le pipeline sépare le morceau en quatre pistes via **demucs** — batterie,
+basse, voix, le reste — puis une couche « charter » choisit, phrase par phrase
+de 8 temps, **quelle piste le joueur incarne** : la plus saillante, où
+saillance = activité × nouveauté du motif. Une voix qui entre attire le lead ;
+quand elle s'installe et se répète, le lead glisse vers ce qui bouge. De
+l'hystérésis évite le zapping, un **budget de notes par phrase** (proportionnel
+à l'intensité relative) crée le contraste, et une ossature de kicks maintient
+la pulsation quand la batterie n'est pas le lead.
+
+Installation (≈ 1,3 Go de dépendances, PyTorch CPU) :
+
+```bash
+cd pipeline && .venv/bin/pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu && .venv/bin/pip install demucs
+```
+
+Premier usage : le modèle (~300 Mo) se télécharge tout seul. Chaque morceau
+coûte **quelques minutes de CPU la première fois** ; les pistes séparées sont
+cachées dans `data/stems/` et les générations suivantes sont rapides. La CLI
+affiche la répartition du lead (`lead par phrase : vocals 12 · drums 8 …`).
+
+Sans demucs (ou s'il échoue), le pipeline **se replie automatiquement** sur
+l'analyse par bandes ci-dessous.
+
+Le levier de difficulté principal est `TARGET_NOTES_PER_SECOND` dans
+`config.py` : le budget de chaque phrase en découle.
+
+## Comment fonctionne l'analyse par bandes (le repli)
 
 Trois détections séparées au lieu d'une seule sur tout le spectre. Le type de
 note ne se devine plus après coup : il découle de **quel instrument a frappé**.

@@ -6,6 +6,10 @@ fichier qu'on touche pour equilibrer une partition, pas les algorithmes.
 
 from pathlib import Path
 
+#: Racine du depot, deduite de l'emplacement de ce fichier :
+#: chartgen/config.py -> chartgen -> pipeline -> racine.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 # --- Analyse audio ---------------------------------------------------------
 
 #: Frequence d'echantillonnage de travail. 22050 Hz suffit largement : on
@@ -55,6 +59,64 @@ BANDS = {
 #: Le charleston est ce qui joue le plus vite dans un morceau : le laisser
 #: passer inonde la partition, d'ou HIGH ignore par defaut.
 BAND_NOTE_TYPE = {"LOW": "DON", "MID": "KA", "HIGH": None}
+
+# --- Separation de sources (demucs) ----------------------------------------
+
+#: Analyse par pistes separees : le morceau est decompose en batterie, basse,
+#: voix et « le reste », et une couche « charter » choisit quelle piste le
+#: joueur incarne a chaque phrase. Si demucs n'est pas installe ou echoue, le
+#: pipeline se rabat automatiquement sur l'analyse par bandes.
+USE_STEM_ANALYSIS = True
+
+#: Modele demucs. htdemucs est le defaut actuel du projet demucs, bon
+#: compromis qualite/temps sur CPU.
+DEMUCS_MODEL = "htdemucs"
+
+#: Les quatre pistes produites par demucs, dans un ordre stable.
+STEMS = ("drums", "bass", "vocals", "other")
+
+#: Type de note produit par les pistes homogenes. La batterie n'y figure pas
+#: (elle repasse par l'analyse par bandes : kick -> DON, caisse claire -> KA),
+#: ni « other » (classe note par note selon son contenu grave/aigu).
+STEM_NOTE_TYPE = {"bass": "DON", "vocals": "KA"}
+
+#: Cache des pistes separees. La separation coute des minutes de CPU : on ne la
+#: paie qu'une fois par morceau. data/ est deja hors du depot git.
+STEMS_CACHE_DIR = REPO_ROOT / "data" / "stems"
+
+# --- Phrases, attention et budget -------------------------------------------
+
+#: Longueur d'une phrase, en temps. 8 temps = 2 mesures en 4/4 : l'unite de
+#: pensee des charters humains et de la dance music.
+PHRASE_BEATS = 8
+
+#: Densite moyenne visee, en notes par seconde. C'est LE levier principal de
+#: difficulte : le budget de chaque phrase en decoule.
+TARGET_NOTES_PER_SECOND = 1.8
+
+#: Bornes du multiplicateur de budget selon l'intensite relative de la phrase.
+#: Une phrase calme peut descendre a 40 % de la densite cible, une phrase
+#: intense monter a 170 % : c'est le contraste qui fabrique les pics.
+BUDGET_MIN_MULTIPLIER = 0.4
+BUDGET_MAX_MULTIPLIER = 1.7
+
+#: Resolution du motif rythmique d'une phrase, en cases. 16 cases sur 8 temps
+#: = la croche, notre subdivision de base.
+PATTERN_SLOTS_PER_PHRASE = 16
+
+#: Nombre de phrases passees contre lesquelles la nouveaute d'un motif est
+#: evaluee. Au-dela, un motif oublie redevient interessant — comme pour
+#: l'auditeur.
+NOVELTY_HISTORY_PHRASES = 8
+
+#: Plancher de saillance d'une piste active mais repetitive : elle doit rester
+#: devant une piste silencieuse.
+NOVELTY_FLOOR = 0.25
+
+#: Un pretendant doit depasser le lead en place de ce facteur pour le detroner.
+#: L'attention humaine est stable par phrases ; un chart qui zappe est
+#: illisible.
+LEAD_HYSTERESIS = 1.3
 
 # --- Grille rythmique ------------------------------------------------------
 
@@ -113,10 +175,6 @@ MIN_NOTE_GAP_S = 0.12
 
 #: Doit rester aligne sur CHART_FORMAT_VERSION dans client/src/chart/types.ts.
 CHART_FORMAT_VERSION = 1
-
-#: Racine du depot, deduite de l'emplacement de ce fichier :
-#: chartgen/config.py -> chartgen -> pipeline -> racine.
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 #: Dossier ou le client va chercher les partitions generees.
 #: Chemin absolu, et pas relatif : la CLI doit ecrire au bon endroit quel que

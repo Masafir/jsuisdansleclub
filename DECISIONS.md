@@ -53,6 +53,28 @@ Fenêtres de jugement : ±40 ms `PERFECT`, ±90 ms `GOOD`, au-delà `MISS`.
 - **La partition de test est du code, pas un JSON** (`client/src/chart/testChart.ts`) : elle génère les notes procéduralement. Le format JSON n'apparaîtra qu'avec le pipeline, quand il faudra transporter des partitions générées.
 - **Un prototype d'estimation de tempo est conservé** dans `pipeline/prototype/` : sans dépendance (ffmpeg seul), il donne BPM et offset d'un morceau. Il ne remplace pas librosa — il travaille sur l'énergie totale, pas sur le flux spectral — mais il documente la méthode et dépanne pour caler une partition à la main.
 
+## Séparation de pistes et couche « charter » (28 juil. 2026)
+
+Sur la pop/house (kick sur chaque temps), l'analyse par bandes produisait 700 notes ininterrompues : le problème n'était plus l'irrégularité mais l'absence de contraste et d'attention. Décision : passer à la séparation de sources (demucs) surmontée d'une couche « charter » qui *choisit* au lieu de tout garder.
+
+**Les principes du groove qui fondent cette couche** (littérature : Witek et al. 2014, Margulis) :
+1. le corps danse sur une grille prévisible (entraînement) ;
+2. l'envie de bouger est maximale à syncope *moyenne* — tension dosée entre grille prédite et accents entendus ;
+3. la répétition transforme l'écoute en participation (boucles de 2-4 mesures) ;
+4. le contraste fabrique les pics — un morceau qui tape tout le temps ne tape jamais ;
+5. le drop est une prédiction à longue portée récompensée.
+
+**Architecture retenue** :
+- demucs sépare le morceau en batterie / basse / voix / reste, avec cache disque (`data/stems/`, indexé par empreinte du fichier) : on paie les minutes de calcul une fois par morceau. On attend pendant l'analyse — pas de pipeline deux vitesses pour l'instant.
+- Par phrase de 8 temps, chaque piste reçoit une **saillance = activité × nouveauté** ; la nouveauté d'un motif se mesure par similarité de Jaccard avec les phrases récentes. La piste la plus saillante devient le **lead** que le joueur incarne — c'est le geste du charter humain (« quelle partie de la musique le joueur va incarner ») et le mécanisme de l'attention auditive (elle va vers ce qui change).
+- **Hystérésis** sur le lead : un prétendant doit dépasser le lead en place de 30 % pour le détrôner. L'attention est stable par phrases ; un chart qui zappe est illisible.
+- **Budget de notes par phrase**, proportionnel à l'intensité relative de la phrase dans le morceau (borné 0.4×–1.7×). `TARGET_NOTES_PER_SECOND` devient LE levier de difficulté.
+- **Ossature** : quand le lead n'est pas la batterie, les kicks les plus forts complètent le budget — la pulsation ne disparaît jamais (principe 1). En cas de collision, le lead gagne toujours.
+- La batterie isolée repasse par l'analyse par bandes (kick→DON, snare→KA), la basse donne des DON, la voix des KA, le « reste » est classé note par note (la fonction `classify_note_type` de l'analyse large bande retrouve un usage).
+- **Repli automatique** sur l'analyse par bandes si demucs est absent ou échoue — le pipeline ne casse jamais pour ça.
+
+Coût assumé : ~1,5 Go de venv (PyTorch CPU), modèle téléchargé au premier usage, minutes de CPU par morceau non caché.
+
 ## Moments forts et arbitrage par intensité (28 juil. 2026)
 
 Le passage en croches avait réglé la difficulté mais rendu les partitions un peu vides : les roulements de batterie et les relances de guitare, ceux qui donnent l'impression de *jouer* le morceau, passaient à la trappe. Une subdivision fixe plafonne partout, y compris là où la musique s'emballe.

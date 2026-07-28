@@ -71,13 +71,16 @@ def main(argv: list[str] | None = None) -> int:
     # serait invalide.
     audio_url = f"/audio/{quote(audio_path.name)}"
 
-    chart = chart_module.generate_chart(str(audio_path), title, audio_url)
+    debug: list[str] = []
+    chart = chart_module.generate_chart(str(audio_path), title, audio_url, debug=debug)
 
     filename = f"{slugify(title)}.json"
     destination = Path(args.out) if args.out else Path(config.CLIENT_CHARTS_DIR) / filename
     written = chart_module.write_chart(chart, destination)
 
     print(summarize(chart))
+    for line in debug:
+        print(f"  {line}")
     print(f"\nPartition ecrite : {written}")
 
     # L'index n'a de sens que dans le dossier servi par le client.

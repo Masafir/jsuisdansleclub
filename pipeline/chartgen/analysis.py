@@ -365,6 +365,34 @@ def strength_at(
     return [float(envelope[frame]) for frame in frames]
 
 
+def band_energies_bulk(
+    samples: np.ndarray,
+    sample_rate: int,
+    times: list[float],
+    split_hz: float = config.FREQUENCY_SPLIT_HZ,
+) -> list[tuple[float, float]]:
+    """Comme `band_energies`, mais pour une liste d'instants d'un coup.
+
+    `band_energies` recalcule le spectrogramme entier a chaque appel — tenable
+    pour quelques notes, ruineux pour des centaines. Ici le spectrogramme n'est
+    calcule qu'une fois.
+    """
+    if not times:
+        return []
+
+    spectrum = np.abs(librosa.stft(samples, hop_length=config.HOP_LENGTH))
+    frequencies = librosa.fft_frequencies(sr=sample_rate)
+    is_low = frequencies < split_hz
+    last = spectrum.shape[1] - 1
+
+    energies: list[tuple[float, float]] = []
+    for time_s in times:
+        frame = min(last, max(0, int(time_s * sample_rate / config.HOP_LENGTH)))
+        column = spectrum[:, frame]
+        energies.append((float(column[is_low].sum()), float(column[~is_low].sum())))
+    return energies
+
+
 def normalized_strength_at(
     envelope: np.ndarray, times: list[float], sample_rate: int
 ) -> list[float]:

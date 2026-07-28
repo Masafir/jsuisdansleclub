@@ -7,9 +7,13 @@ doit rester synchronisee des deux cotes, via CHART_FORMAT_VERSION.
 from __future__ import annotations
 
 import json
+import sys
+from collections import Counter
 from pathlib import Path
 
-from . import analysis, config, notes
+import numpy as np
+
+from . import analysis, config, notes, phrases, stems
 
 
 def build_chart(
@@ -80,6 +84,171 @@ def mark_accent_notes(
         if any(start <= time_s < end for start, end in accent_spans_s):
             note["accent"] = True
     return note_list
+
+
+def stem_streams(stem_paths: dict[str, Path]) -> dict[str, list[phrases.Event]]:
+    """Un flux d'evenements (instant, intensite, type) par piste separee.
+
+    La batterie isolee repasse par l'analyse par bandes — kick -> DON, caisse
+    claire -> KA — qui devient tres propre sans le reste du mix. La basse est
+    du DON, la voix du KA, et « le reste » (synthes, guitares, bruits
+    insolites) est classe note par note selon son contenu grave/aigu, par la
+    fonction ecrite pour l'analyse large bande qui retrouve ici un usage.
+
+    Les intensites sont normalisees par piste : c'est ce qui permet ensuite de
+    comparer une note de voix a une note de batterie.
+    """
+    streams: dict[str, list[phrases.Event]] = {}
+
+    for stem, path in stem_paths.items():
+        samples, sample_rate = analysis.load_audio(str(path))
+        events: list[phrases.Event] = []
+
+        if stem == "drums":
+            envelopes = analysis.onset_envelopes_by_band(samples, sample_rate)
+            for band, note_type in (("LOW", "DON"), ("MID", "KA")):
+                envelope = envelopes[band]
+                times = analysis.detect_onset_times(envelope, sample_rate)
+                times = notes.select_strongest(
+                    times,
+                    analysis.strength_at(envelope, times, sample_rate),
+                    config.MIN_NOTE_GAP_S,
+                )
+                strengths = analysis.normalized_strength_at(envelope, times, sample_rate)
+                events += [
+                    (time_s, strength, note_type)
+                    for time_s, strength in zip(times, strengths)
+                ]
+        else:
+            envelope = analysis.onset_envelope(samples, sample_rate)
+            times = analysis.detect_onset_times(envelope, sample_rate)
+            times = notes.select_strongest(
+                times,
+                analysis.strength_at(envelope, times, sample_rate),
+                config.MIN_NOTE_GAP_S,
+            )
+            strengths = analysis.normalized_strength_at(envelope, times, sample_rate)
+            if stem == "other":
+                types = [
+                    notes.classify_note_type(low, high)
+                    for low, high in analysis.band_energies_bulk(
+                        samples, sample_rate, times
+                    )
+                ]
+            else:
+                types = [config.STEM_NOTE_TYPE[stem]] * len(times)
+            events = [
+                (time_s, strength, note_type)
+                for time_s, strength, note_type in zip(times, strengths, types)
+            ]
+
+        streams[stem] = sorted(events)
+
+    return streams
+
+
+def notes_from_stems(
+    audio_path: str,
+    samples,
+    sample_rate: int,
+    debug: list[str] | None = None,
+) -> tuple[list[float], list[notes.NoteType], list[tuple[float, float]]]:
+    """Analyse « charter » : pistes separees, attention par nouveaute, budget.
+
+    Phrase par phrase (8 temps) :
+      1. chaque piste recoit une saillance = activite x nouveaute de son motif ;
+      2. la plus saillante devient le lead — ce que le joueur incarne — avec de
+         l'hysteresis pour que l'attention ne zappe pas ;
+      3. la phrase recoit un budget de notes proportionnel a son intensite
+         relative dans le morceau (le contraste) ;
+      4. le lead remplit le budget avec ses notes les plus fortes, et une
+         ossature de kicks complete si la batterie n'est pas le lead — la
+         pulsation ne disparait jamais.
+    """
+    streams = stem_streams(stems.separate_stems(audio_path))
+
+    # Le beat tracking se fait sur le mix complet : plus fiable que sur une
+    # piste isolee.
+    beats = analysis.beat_times(samples, sample_rate)
+    all_onsets = sorted(t for events in streams.values() for t, _, _ in events)
+    density = analysis.onsets_per_beat(all_onsets, beats)
+    accents = analysis.find_accent_beats(density)
+    grid = analysis.variable_grid(beats, accents)
+    tolerance = analysis.grid_tolerance_s(grid)
+
+    snapped = {
+        stem: phrases.dedupe_events(
+            phrases.snap_events(events, grid, tolerance), config.MIN_NOTE_GAP_S
+        )
+        for stem, events in streams.items()
+    }
+
+    spans = phrases.phrase_spans(beats)
+    intensities = [
+        sum(1 for t in all_onsets if start <= t < end) / (end - start)
+        for start, end in spans
+    ]
+    positive = [value for value in intensities if value > 0]
+    median_intensity = float(np.median(positive)) if positive else 0.0
+
+    history: dict[str, list[tuple[int, ...]]] = {stem: [] for stem in snapped}
+    lead: str | None = None
+    lead_counts: Counter[str] = Counter()
+    picked: list[phrases.Event] = []
+
+    for (start, end), intensity in zip(spans, intensities):
+        span_s = end - start
+        in_span = {
+            stem: phrases.events_in_span(events, start, end)
+            for stem, events in snapped.items()
+        }
+
+        signatures = {
+            stem: phrases.pattern_signature(events, start, end)
+            for stem, events in in_span.items()
+        }
+        saliences = {
+            stem: phrases.salience(
+                len(in_span[stem]), span_s, phrases.novelty(signatures[stem], history[stem])
+            )
+            for stem in in_span
+        }
+
+        lead = phrases.select_lead(saliences, lead)
+        budget = phrases.phrase_budget(intensity, median_intensity, span_s)
+
+        lead_events = phrases.pick_top(in_span[lead], budget) if lead else []
+        remaining = budget - len(lead_events)
+        backbone_pool = (
+            []
+            if lead == "drums"
+            else [event for event in in_span.get("drums", []) if event[2] == "DON"]
+        )
+        backbone = phrases.pick_top(backbone_pool, remaining)
+        picked += phrases.combine_streams(lead_events, backbone, config.MIN_NOTE_GAP_S)
+
+        for stem in history:
+            history[stem].append(signatures[stem])
+            del history[stem][: -config.NOVELTY_HISTORY_PHRASES]
+        if lead is not None:
+            lead_counts[lead] += 1
+
+    picked.sort()
+    accent_spans = [
+        (beats[index], beats[index + 1])
+        for index in sorted(accents)
+        if index + 1 < len(beats)
+    ]
+
+    if debug is not None and lead_counts:
+        summary = " · ".join(f"{stem} {count}" for stem, count in lead_counts.most_common())
+        debug.append(f"lead par phrase ({sum(lead_counts.values())} phrases) : {summary}")
+
+    return (
+        [time_s for time_s, _, _ in picked],
+        [note_type for _, _, note_type in picked],
+        accent_spans,
+    )
 
 
 def notes_from_bands(
@@ -161,19 +330,36 @@ def notes_from_full_spectrum(
     return playable_times, note_types
 
 
-def generate_chart(audio_path: str, title: str, audio_url: str) -> dict:
+def generate_chart(
+    audio_path: str, title: str, audio_url: str, debug: list[str] | None = None
+) -> dict:
     """Chaine complete : un fichier audio en entree, une partition en sortie.
 
     C'est le seul endroit qui orchestre les etapes ; chacune reste testable
-    isolement.
+    isolement. L'analyse par pistes separees est preferee ; si demucs manque ou
+    echoue, on se replie sur l'analyse par bandes plutot que d'echouer.
     """
     samples, sample_rate = analysis.load_audio(audio_path)
 
-    if config.USE_BAND_ANALYSIS:
-        times, note_types, accent_spans = notes_from_bands(samples, sample_rate)
-    else:
-        times, note_types = notes_from_full_spectrum(samples, sample_rate)
-        accent_spans = []
+    times: list[float] | None = None
+    if config.USE_STEM_ANALYSIS:
+        try:
+            times, note_types, accent_spans = notes_from_stems(
+                audio_path, samples, sample_rate, debug
+            )
+        except stems.StemSeparationError as error:
+            print(
+                f"Separation de pistes indisponible ({error}) : "
+                "repli sur l'analyse par bandes.",
+                file=sys.stderr,
+            )
+
+    if times is None:
+        if config.USE_BAND_ANALYSIS:
+            times, note_types, accent_spans = notes_from_bands(samples, sample_rate)
+        else:
+            times, note_types = notes_from_full_spectrum(samples, sample_rate)
+            accent_spans = []
 
     note_list = mark_accent_notes(
         notes.times_to_notes(times, note_types), accent_spans
