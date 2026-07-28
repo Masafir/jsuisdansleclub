@@ -45,6 +45,14 @@ Fenêtres de jugement : ±40 ms `PERFECT`, ±90 ms `GOOD`, au-delà `MISS`.
 - **3 SFX courts** : réussite, échec, parfait (fournis par amiral, déposés dans `client/public/audio/`).
 - Direction artistique : **ambiance disco**, gradients rose / orange / rouge / violet / bleu.
 
+## Décisions de gameplay et d'UI (28 juil. 2026)
+
+- **Les notes ratées continuent de défiler** jusqu'à sortir de l'écran par la gauche ; seules les notes réussies disparaissent à la ligne de jugement. Sans ça, réussite et échec produisaient la même disparition et le joueur ne savait pas ce qu'il venait de faire — surtout quand deux notes proches s'effaçaient ensemble. La disparition devient donc la récompense.
+- **Rappel des touches dans l'ordre physique du clavier** (D F | J K), un disque par touche rempli de la couleur de sa note. Grouper par type de note (F/J d'un côté, D/K de l'autre) masquait l'entrelacement réel des doigts. L'ordre est décrit par `KEY_LAYOUT` dans la config, car il ne se déduit pas de `KEY_BINDINGS`.
+- **Volumes centralisés dans une table de mixage** (`MIX`) : volume général, musique, et un volume par effet sonore. La musique passe par un `GainNode` au lieu d'attaquer la sortie en direct, ce qui la rend réglable et ouvre la voie aux automations (fondu au game over, atténuation pendant un taunt).
+- **La partition de test est du code, pas un JSON** (`client/src/chart/testChart.ts`) : elle génère les notes procéduralement. Le format JSON n'apparaîtra qu'avec le pipeline, quand il faudra transporter des partitions générées.
+- **Un prototype d'estimation de tempo est conservé** dans `pipeline/prototype/` : sans dépendance (ffmpeg seul), il donne BPM et offset d'un morceau. Il ne remplace pas librosa — il travaille sur l'énergie totale, pas sur le flux spectral — mais il documente la méthode et dépanne pour caler une partition à la main.
+
 ## Principes d'architecture (découlent de la nature du jeu)
 
 1. **La détection de hit est 100 % locale.** Le client juge chaque hit contre son horloge audio et envoie le résultat (score/combo) au serveur. Le serveur ne valide pas les hits en temps réel (anticheat = problème post-MVP).

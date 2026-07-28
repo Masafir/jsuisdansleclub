@@ -12,10 +12,11 @@ import { SongClock } from '../audio/clock';
 import { SfxPlayer } from '../audio/sfx';
 import { getAudioContext, loadAudioBuffer, unlockAudioContext } from '../audio/loader';
 import { HighwayRenderer } from '../render/highway';
-import type { Chart } from '../chart/types';
+import type { Chart, Note } from '../chart/types';
 import {
   COUNTDOWN,
   HIGHWAY,
+  missedNoteLingerMs,
   musicVolume,
   noteTypeForKey,
   type Judgement,
@@ -54,6 +55,12 @@ export class GameSession {
   private frameHandle: number | null = null;
   private status: SessionStatus = 'idle';
   private lastJudgement: Judgement | null = null;
+  /**
+   * Notes ratées encore à l'écran. Elles ont quitté le champ du Judge (le
+   * curseur est passé) mais continuent d'être dessinées jusqu'à sortir par la
+   * gauche : c'est ce qui distingue visuellement un échec d'une réussite.
+   */
+  private missedNotes: Note[] = [];
   /** Passe à true dès `stop()` : empêche un démarrage tardif après démontage. */
   private disposed = false;
 
@@ -120,6 +127,10 @@ export class GameSession {
     this.lastJudgement = result.judgement;
     this.sfx.play(result.judgement);
     this.renderer.spawnPulse(result.judgement, this.clock.getSongTimeMs());
+
+    // Une note frappée trop tôt, trop tard ou avec la mauvaise touche reste
+    // visible : le joueur voit passer ce qu'il a manqué.
+    if (result.judgement === 'MISS') this.missedNotes.push(result.note);
   }
 
   private loop = (): void => {
@@ -132,10 +143,11 @@ export class GameSession {
     }
 
     if (this.status === 'playing') {
-      for (const _missed of this.judge.update(songTimeMs)) {
+      for (const missed of this.judge.update(songTimeMs)) {
         this.tracker.register('MISS');
         this.lastJudgement = 'MISS';
         this.renderer.spawnPulse('MISS', songTimeMs);
+        this.missedNotes.push(missed);
       }
 
       if (isPlayerDead(this.tracker, songTimeMs, this.chart.durationMs)) {
@@ -145,8 +157,15 @@ export class GameSession {
       }
     }
 
+    // Oublier les notes ratées une fois sorties de l'écran, sinon elles
+    // s'accumuleraient pendant tout le morceau.
+    const lingerMs = missedNoteLingerMs();
+    this.missedNotes = this.missedNotes.filter(
+      (note) => songTimeMs - note.timeMs <= lingerMs,
+    );
+
     this.renderer.renderNotes(
-      this.judge.visibleNotes(songTimeMs, HIGHWAY.APPROACH_TIME_MS),
+      [...this.missedNotes, ...this.judge.visibleNotes(songTimeMs, HIGHWAY.APPROACH_TIME_MS)],
       songTimeMs,
     );
     this.renderer.updatePulses(songTimeMs);
@@ -175,6 +194,7 @@ export class GameSession {
     }
     this.source = null;
     this.status = 'idle';
+    this.missedNotes = [];
     this.renderer.clear();
   }
 

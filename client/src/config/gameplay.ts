@@ -108,7 +108,31 @@ export const HIGHWAY = {
   JUDGE_CIRCLE_RADIUS_PX: 34,
   /** Marge hors écran avant de cesser d'afficher une note, en pixels. */
   CULL_MARGIN_PX: 80,
+  /**
+   * Marge de sécurité sur la durée de survie d'une note ratée : 1 = elle
+   * disparaît pile au bord gauche, 1.5 = elle continue un peu au-delà pour que
+   * sa sortie ne se voie pas.
+   */
+  MISSED_NOTE_LINGER_SAFETY: 1.5,
 } as const;
+
+/**
+ * Durée pendant laquelle une note ratée continue de défiler après la ligne de
+ * jugement, en millisecondes.
+ *
+ * Déduite de la géométrie de la piste plutôt que fixée à la main : la note met
+ * APPROACH_TIME_MS pour parcourir la distance du bord droit à la ligne de
+ * jugement, donc proportionnellement moins pour couvrir les
+ * JUDGE_LINE_X_RATIO restants jusqu'au bord gauche. Déplacer la ligne de
+ * jugement ajuste automatiquement cette durée.
+ */
+export function missedNoteLingerMs(): number {
+  const travelRatio =
+    HIGHWAY.JUDGE_LINE_X_RATIO / (1 - HIGHWAY.JUDGE_LINE_X_RATIO);
+  return (
+    HIGHWAY.APPROACH_TIME_MS * travelRatio * HIGHWAY.MISSED_NOTE_LINGER_SAFETY
+  );
+}
 
 /** Retour visuel : pulsations lumineuses à chaque appui. */
 export const FEEDBACK = {
