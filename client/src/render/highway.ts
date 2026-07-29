@@ -9,13 +9,28 @@ import { Application, Container, Graphics } from 'pixi.js';
 import {
   FEEDBACK,
   HIGHWAY,
+  HOLD_FX,
   JUDGE_CIRCLE,
   NOTE_TYPES,
   type Judgement,
   type NoteType,
 } from '../config/gameplay';
-import { HIGHWAY_COLORS, NOTE_COLORS, FEEDBACK_COLORS, GRADIENTS } from '../config/theme';
+import { HIGHWAY_COLORS, NOTE_COLORS, PALETTE, FEEDBACK_COLORS, GRADIENTS } from '../config/theme';
 import type { Note } from '../chart/types';
+
+/**
+ * Étincelle d'une tenue active : naît quelque part sur la traîne et remonte
+ * vers le cercle de jugement au même rythme que le défilement, comme si la
+ * tenue « aspirait » l'énergie de la note vers la main du joueur.
+ */
+interface HoldParticle {
+  /** Instant (temps morceau) où l'étincelle est apparue. */
+  bornAtMs: number;
+  /** Distance au cercle de jugement à la naissance, en pixels. */
+  spawnOffsetPx: number;
+  /** Léger décalage de phase, pour que les étincelles d'une même tenue ne tremblent pas à l'unisson. */
+  jitterSeed: number;
+}
 
 interface Pulse {
   /** Position dans le morceau au déclenchement, en ms. */
@@ -35,6 +50,9 @@ export class HighwayRenderer {
   private readonly pulseLayer = new Container();
   /** Traînes des holds en cours, redessinées chaque image. */
   private readonly activeHoldLayer = new Graphics();
+  /** Étincelles par note tenue, et instant du dernier spawn pour son débit. */
+  private readonly holdParticles = new Map<Note, HoldParticle[]>();
+  private readonly holdLastSpawnMs = new Map<Note, number>();
   private readonly noteGraphics = new Map<Note, Graphics>();
   private pulses: Pulse[] = [];
   /** Instant du dernier appui réussi par lane, pilote la dilatation du cercle. */
@@ -78,6 +96,10 @@ export class HighwayRenderer {
       // taille à l'image suivante.
       for (const graphic of this.noteGraphics.values()) graphic.destroy();
       this.noteGraphics.clear();
+      // Même raison : la position des étincelles est en pixels absolus, donc
+      // liée à l'ancienne largeur. Elles renaîtront naturellement.
+      this.holdParticles.clear();
+      this.holdLastSpawnMs.clear();
     });
   }
 
@@ -182,35 +204,124 @@ export class HighwayRenderer {
   /**
    * Traînes des holds en cours de tenue : ancrées au cercle de jugement, elles
    * rétrécissent à mesure que la fin approche — la tenue se « consomme ».
+   *
+   * Habillées de deux effets pour qu'on VOIE que ça tient, et pas seulement
+   * qu'une note est étirée : une tête qui pulse au rythme électrique, et des
+   * étincelles qui remontent la traîne vers le cercle, comme si la tenue
+   * aspirait l'énergie de la note vers la main du joueur.
    */
   renderActiveHolds(holds: readonly Note[], songTimeMs: number): void {
     this.activeHoldLayer.clear();
+    this.pruneHoldParticles(holds);
 
     for (const note of holds) {
       const endMs = note.timeMs + (note.durationMs ?? 0);
       const endX = this.judgeLineX + Math.max(0, endMs - songTimeMs) * this.pxPerMs;
+      const trailLengthPx = Math.max(HIGHWAY.NOTE_RADIUS_PX, endX - this.judgeLineX);
       const y = this.laneY(note.type);
       const color = NOTE_COLORS[note.type];
       const radius = HIGHWAY.NOTE_RADIUS_PX;
 
       this.activeHoldLayer
-        .roundRect(
-          this.judgeLineX,
-          y - radius * 0.55,
-          Math.max(radius, endX - this.judgeLineX),
-          radius * 1.1,
-          radius * 0.55,
-        )
+        .roundRect(this.judgeLineX, y - radius * 0.55, trailLengthPx, radius * 1.1, radius * 0.55)
         .fill({ color, alpha: 0.45 })
         .stroke({ color, width: 2, alpha: 0.8 });
 
-      // La tête reste vissée sur le cercle de jugement, bien pleine : le
-      // joueur voit que sa tenue est « accrochée ».
+      this.spawnHoldParticles(note, songTimeMs, trailLengthPx);
+      this.drawHoldParticles(note, songTimeMs, y, color);
+
+      // La tête pulse : la tenue est vivante, ce n'est pas une image figée.
+      const pulse =
+        1 +
+        HOLD_FX.HEAD_PULSE_AMPLITUDE *
+          Math.sin((songTimeMs / HOLD_FX.HEAD_PULSE_PERIOD_MS) * Math.PI * 2);
+
       this.activeHoldLayer
-        .circle(this.judgeLineX, y, radius)
+        .circle(this.judgeLineX, y, radius * pulse)
         .fill({ color })
         .stroke({ color: HIGHWAY_COLORS.JUDGE_CIRCLE, width: 3, alpha: 0.9 });
+      // Léger surcroît de lueur blanche au pic de la pulsation : lit comme une
+      // décharge, pas seulement un grossissement. Clampé à 0 : la moitié basse
+      // du cycle sinusoïdal donnerait une alpha négative.
+      const glowAlpha = Math.max(0, (pulse - 1) * 2.5);
+      this.activeHoldLayer
+        .circle(this.judgeLineX, y, radius * pulse * 1.35)
+        .stroke({ color: PALETTE.WHITE, width: 2, alpha: glowAlpha });
     }
+  }
+
+  /** Oublie les étincelles des tenues qui ne sont plus actives. */
+  private pruneHoldParticles(holds: readonly Note[]): void {
+    if (this.holdParticles.size === 0) return;
+    const active = new Set(holds);
+    for (const note of this.holdParticles.keys()) {
+      if (!active.has(note)) {
+        this.holdParticles.delete(note);
+        this.holdLastSpawnMs.delete(note);
+      }
+    }
+  }
+
+  /** Ajoute de nouvelles étincelles sur la traîne, à débit régulier. */
+  private spawnHoldParticles(note: Note, songTimeMs: number, trailLengthPx: number): void {
+    let particles = this.holdParticles.get(note);
+    if (!particles) {
+      particles = [];
+      this.holdParticles.set(note, particles);
+    }
+    if (particles.length >= HOLD_FX.MAX_PARTICLES_PER_HOLD) return;
+
+    const lastSpawn = this.holdLastSpawnMs.get(note) ?? Number.NEGATIVE_INFINITY;
+    if (songTimeMs - lastSpawn < HOLD_FX.PARTICLE_SPAWN_INTERVAL_MS) return;
+
+    this.holdLastSpawnMs.set(note, songTimeMs);
+    particles.push({
+      bornAtMs: songTimeMs,
+      // Apparaît n'importe où sur la traîne visible, pas seulement au bout :
+      // sinon la densité d'étincelles chuterait à mesure que la tenue raccourcit.
+      spawnOffsetPx: Math.random() * trailLengthPx,
+      jitterSeed: Math.random() * Math.PI * 2,
+    });
+  }
+
+  /**
+   * Anime et dessine les étincelles d'une tenue : elles remontent vers le
+   * cercle de jugement à la vitesse de défilement, tremblent perpendiculairement
+   * à la traîne, et s'éteignent en approchant du cercle ou en fin de vie.
+   */
+  private drawHoldParticles(note: Note, songTimeMs: number, y: number, color: number): void {
+    const particles = this.holdParticles.get(note);
+    if (!particles) return;
+
+    const surviving: HoldParticle[] = [];
+    for (const particle of particles) {
+      const ageMs = songTimeMs - particle.bornAtMs;
+      const traveledPx = ageMs * this.pxPerMs;
+      const offsetPx = particle.spawnOffsetPx - traveledPx;
+
+      const expired = ageMs >= HOLD_FX.PARTICLE_LIFETIME_MS || offsetPx <= 0;
+      if (expired) continue;
+      surviving.push(particle);
+
+      // S'éteint en fin de vie ET en approchant du cercle, le pire des deux
+      // dominant : jamais de flash brutal à l'arrivée.
+      const lifeFade = 1 - ageMs / HOLD_FX.PARTICLE_LIFETIME_MS;
+      const arrivalFade = Math.min(1, offsetPx / (HOLD_FX.PARTICLE_RADIUS_PX * 4));
+      const alpha = Math.min(lifeFade, arrivalFade);
+
+      const jitter =
+        Math.sin(
+          particle.jitterSeed + (songTimeMs / HOLD_FX.PARTICLE_JITTER_PERIOD_MS) * Math.PI * 2,
+        ) * HOLD_FX.PARTICLE_JITTER_PX;
+
+      const x = this.judgeLineX + offsetPx;
+      this.activeHoldLayer
+        .circle(x, y + jitter, HOLD_FX.PARTICLE_RADIUS_PX)
+        .fill({ color: PALETTE.WHITE, alpha: alpha * 0.9 })
+        .circle(x, y + jitter, HOLD_FX.PARTICLE_RADIUS_PX * 1.8)
+        .stroke({ color, width: 1.5, alpha: alpha * 0.7 });
+    }
+    this.holdParticles.set(note, surviving);
   }
 
   /**
@@ -402,5 +513,7 @@ export class HighwayRenderer {
     for (const pulse of this.pulses) pulse.graphic.destroy();
     this.pulses = [];
     this.activeHoldLayer.clear();
+    this.holdParticles.clear();
+    this.holdLastSpawnMs.clear();
   }
 }

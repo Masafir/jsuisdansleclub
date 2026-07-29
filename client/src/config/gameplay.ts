@@ -168,6 +168,37 @@ export const TOUCH = {
  * la tenue rapporte des points au prorata du temps tenu, et relâcher tôt
  * arrête simplement les points — ni MISS, ni combo cassé.
  */
+/**
+ * Retour visuel d'une tenue en cours : étincelles qui remontent la traîne
+ * vers le cercle de jugement (l'énergie se « collecte »), et halo pulsant sur
+ * la tête. Sans ça, un hold actif ne se distingue pas d'une simple note
+ * étirée — il faut qu'on VOIE que ça tient.
+ */
+export const HOLD_FX = {
+  /** Délai entre deux étincelles générées sur une tenue, en millisecondes. */
+  PARTICLE_SPAWN_INTERVAL_MS: 45,
+  /**
+   * Durée de vie maximale d'une étincelle. Une étincelle meurt avant si elle
+   * atteint le cercle de jugement — elle ne le dépasse jamais.
+   */
+  PARTICLE_LIFETIME_MS: 500,
+  /** Rayon d'une étincelle, en pixels. */
+  PARTICLE_RADIUS_PX: 4,
+  /** Amplitude du tremblement perpendiculaire à la traîne (effet électrique). */
+  PARTICLE_JITTER_PX: 9,
+  /** Période du tremblement, en millisecondes. */
+  PARTICLE_JITTER_PERIOD_MS: 90,
+  /**
+   * Garde-fou : nombre max d'étincelles vivantes par tenue. Protège d'un
+   * empilement si une image a mis longtemps à s'afficher.
+   */
+  MAX_PARTICLES_PER_HOLD: 20,
+  /** Période de la pulsation de la tête pendant la tenue, en millisecondes. */
+  HEAD_PULSE_PERIOD_MS: 260,
+  /** Amplitude de la pulsation de la tête, en fraction du rayon. */
+  HEAD_PULSE_AMPLITUDE: 0.16,
+} as const;
+
 export const HOLD = {
   /** Points par seconde de tenue, avant multiplicateur de combo. */
   POINTS_PER_SECOND: 150,
