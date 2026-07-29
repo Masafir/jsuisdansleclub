@@ -128,7 +128,15 @@ def stem_streams(stem_paths: dict[str, Path]) -> dict[str, list[phrases.Event]]:
                 config.MIN_NOTE_GAP_S,
             )
             strengths = analysis.normalized_strength_at(envelope, times, sample_rate)
-            if stem == "other":
+            if config.USE_RELATIVE_NOTE_TYPE:
+                # La couleur suit le contour de la piste : chaque note est
+                # comparee a la brillance MEDIANE de sa propre piste. Une ligne
+                # de chant alterne alors DON et KA selon qu'elle monte ou
+                # descend, au lieu d'etre uniformement KA.
+                types = notes.types_from_contour(
+                    analysis.band_energies_bulk(samples, sample_rate, times)
+                )
+            elif stem == "other":
                 types = [
                     notes.classify_note_type(low, high)
                     for low, high in analysis.band_energies_bulk(
@@ -182,7 +190,13 @@ def detect_holds(
         )
 
         envelope = analysis.onset_envelope(samples, sample_rate)
-        onsets = analysis.detect_onset_times(envelope, sample_rate, samples=samples)
+        # Volontairement SANS `samples`, donc sans backtracking : ce comptage
+        # ne sert qu'a distinguer une envolee tenue d'un chant scande, et le
+        # backtracking rend ~50 % d'onsets en plus (177 -> 270 sur My Hero
+        # Academia), ce qui faisait passer toutes les envolees pour du scande
+        # et supprimait les tenues. Le seuil HOLD_MAX_ONSETS_PER_S est calibre
+        # sur la detection simple.
+        onsets = analysis.detect_onset_times(envelope, sample_rate)
         segments = notes.filter_hold_segments(
             segments, onsets, config.HOLD_MAX_ONSETS_PER_S, config.HOLD_MAX_DURATION_S
         )
@@ -292,14 +306,29 @@ def notes_from_stems(
         lead = phrases.select_lead(saliences, lead, section_label=section_label)
         budget = phrases.phrase_budget(intensity, median_intensity, span_s)
 
-        lead_events = phrases.pick_top(in_span[lead], budget) if lead else []
-        remaining = budget - len(lead_events)
-        backbone_pool = (
-            []
-            if lead == "drums"
-            else [event for event in in_span.get("drums", []) if event[2] == "DON"]
-        )
-        backbone = phrases.pick_top(backbone_pool, remaining)
+        if use_new_gen and config.USE_DRUM_BACKBONE_SHARE:
+            # L'ossature de batterie garde ses DEUX couleurs (kick -> DON,
+            # caisse claire -> KA) et se voit reserver une part du budget. La
+            # filtrer aux seuls DON, et ne lui laisser que les miettes,
+            # produisait des blocs entiers d'une seule couleur : bass ne donne
+            # que des DON, vocals que des KA, et une phrase menee par l'une
+            # d'elles etait monochrome.
+            backbone_pool = [] if lead == "drums" else in_span.get("drums", [])
+            backbone_budget = (
+                round(budget * config.BACKBONE_BUDGET_SHARE) if backbone_pool else 0
+            )
+            lead_events = (
+                phrases.pick_top(in_span[lead], budget - backbone_budget) if lead else []
+            )
+        else:
+            lead_events = phrases.pick_top(in_span[lead], budget) if lead else []
+            backbone_pool = (
+                []
+                if lead == "drums"
+                else [event for event in in_span.get("drums", []) if event[2] == "DON"]
+            )
+
+        backbone = phrases.pick_top(backbone_pool, budget - len(lead_events))
         picked += phrases.combine_streams(lead_events, backbone, config.MIN_NOTE_GAP_S)
 
         for stem in history:
@@ -335,6 +364,12 @@ def notes_from_stems(
     times = [times[index] for index in order]
     note_types = [note_types[index] for index in order]
     durations = [durations[index] for index in order]
+
+    # Dernier passage : plafonner les series d'une meme couleur. En dernier,
+    # apres l'insertion des tenues, pour que le plafond porte sur la partition
+    # telle que le joueur la verra.
+    if use_new_gen and config.USE_RUN_CAP:
+        note_types = notes.cap_same_type_runs(note_types)
 
     accent_spans = [
         (beats[index], beats[index + 1])

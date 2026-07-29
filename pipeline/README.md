@@ -62,35 +62,50 @@ d'activation de la CLI, et rien ne le signalait.
 Premier passage sur un morceau inconnu : ajouter les minutes de séparation
 demucs, payées une seule fois (cache dans `data/stems/`).
 
-### État actuel : à régler avant adoption
+### Référence : ce que fait un charter humain
 
-Mesuré sur Haruka Kanata (90 s, 172 BPM) :
+Les quatre difficultés officielles de *Haruka Kanata* (osu!taiko, mappeur
+Tachibana_) donnent une règle nette, **identique à tous les niveaux** :
 
-| | legacy | `--new-gen` |
-|---|---|---|
-| Notes | 144 (1,60/s) | 138 (1,53/s) |
-| Ratio DON/KA | 55 / 45 | 25 / 75 |
-| Plus long run de même type | 37 | 14 |
-| Répartition du lead | drums 16 · bass 9 · vocals 6 | drums 30 · vocals 2 |
+| Difficulté | notes/s | DON % | séries : médiane / max |
+|---|---|---|---|
+| Kantan | 1,76 | 45 % | 1 / **4** |
+| Futsuu | 3,12 | 52 % | 1 / **4** |
+| Muzukashii | 3,91 | 49 % | 1 / **5** |
+| Courage | 5,10 | 48 % | 1 / **5** |
 
-Le gain réel est sur les **longues séries d'une même couleur** (37 → 14). En
-revanche deux réglages sur-corrigent :
+**Jamais plus de 4 ou 5 notes consécutives de la même couleur**, et un ratio
+DON/KA toujours entre 45 et 52 %. La densité, elle, varie du simple au triple
+selon la difficulté : c'est le levier de difficulté, pas l'alternance.
 
-- `SNARE_BEAT_TOLERANCE_S` (0,15 s) couvre presque la moitié d'un temps à
-  172 BPM — ce n'est plus une détection de caisse claire mais un forçage du
-  contretemps, d'où les 75 % de KA. Essayer 0,05 s.
-- `STRUCTURE_LEAD_BOOST` (1,5) fige le lead sur la batterie, car couplet, intro
-  et outro la préfèrent toutes dans `SECTION_LEAD_PREFERENCE`.
+Notre densité (~1,5/s) situe nos partitions au niveau **Kantan**.
 
-Et deux fonctionnalités ne produisent rien pour l'instant :
+### État actuel
 
-- **Les finishes ne sortent jamais** : `detect_finishes` rend zéro note sur les
-  morceaux testés, et le champ `finish` n'existe ni dans `Chart` côté client ni
-  dans le rendu — même produit, il serait ignoré.
-- **Les tenues disparaissent** en `--new-gen` (3 en legacy, 0 avec le drapeau)
-  sur My Hero Academia. Piste : le backtracking rend davantage d'onsets sur la
-  piste de voix, et `filter_hold_segments` classe alors les envolées comme du
-  chant scandé.
+| | legacy | `--new-gen` | référence Kantan |
+|---|---|---|---|
+| Notes/s | 1,60 | 1,61 | 1,76 |
+| DON % | 55 | 37 | 45 |
+| Séries : médiane / max | 2 / **37** | 1 / **4** | 1 / **4** |
+| Slides | 4 | 1 | — |
+
+Le plafonnement des séries aligne exactement le générateur sur la convention
+humaine. Restent deux écarts :
+
+- **Ratio DON/KA à 37 %** contre 45-52 % attendus. Cause : trois pistes sur
+  quatre sont monochromes à la source (bass ne fournit que des DON, vocals et
+  other quasi que des KA), et `USE_RELATIVE_NOTE_TYPE` ne corrige le contour
+  que de la piste menante.
+- **Moins de slides** qu'en legacy (1 contre 4). Le backtracking rend ~50 %
+  d'onsets en plus sur la voix, ce qui fait classer des envolées comme du chant
+  scandé malgré le contournement mis en place dans `detect_holds`.
+
+Et une fonctionnalité ne produit rien : **les finishes**. `detect_finishes`
+rend zéro note sur les morceaux testés, et le champ `finish` n'existe ni dans
+`Chart` côté client ni dans le rendu — même produit, il serait ignoré.
+
+Les maps de référence sont dans `F:\jsuisdansleclub\osumap\` (accessibles sous
+`/mnt/f/...` depuis WSL) et se ré-analysent à tout moment pour recalibrer.
 
 ### Règle d'isolation
 

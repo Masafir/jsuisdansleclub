@@ -176,6 +176,73 @@ def merge_bands(
     return [time_s for time_s, _ in kept], [note_type for _, note_type in kept]
 
 
+def types_from_contour(
+    band_energies: list[tuple[float, float]],
+) -> list[NoteType]:
+    """Couleur de chaque note, relative au contour de sa propre piste.
+
+    Fonction pure.
+
+    `classify_note_type` compare grave et aigu dans l'absolu : sur une piste
+    homogene, elle rend donc toujours la meme reponse — la basse est grave, la
+    voix est aigue. Ici on compare chaque note a la brillance MEDIANE de sa
+    piste : les notes plus brillantes que la moyenne de la ligne deviennent des
+    KA, les plus sombres des DON.
+
+    Une ligne de chant alterne alors selon qu'elle monte ou descend, ce qui est
+    exactement la facon dont un charter humain colore une melodie en taiko.
+    """
+    if not band_energies:
+        return []
+
+    # Part d'aigu dans chaque note, entre 0 et 1.
+    brightness = [
+        high / (low + high) if (low + high) > 0 else 0.0 for low, high in band_energies
+    ]
+    ordered = sorted(brightness)
+    middle = len(ordered) // 2
+    median = (
+        ordered[middle]
+        if len(ordered) % 2
+        else (ordered[middle - 1] + ordered[middle]) / 2
+    )
+    return ["KA" if value > median else "DON" for value in brightness]
+
+
+def cap_same_type_runs(
+    types: list[NoteType], max_run: int = config.MAX_SAME_TYPE_RUN
+) -> list[NoteType]:
+    """Brise les longues series d'une meme couleur, en alternant la couleur.
+
+    Fonction pure.
+
+    Les quatre difficultes officielles de « Haruka Kanata » en osu!taiko ont
+    toutes une serie mediane de 1 et un maximum de 4 a 5. Notre generateur
+    produisait des series de 40 : trois pistes sur quatre etant monochromes
+    (bass n'emet que des DON, vocals et other que des KA), une phrase menee par
+    l'une d'elles l'etait aussi.
+
+    On parcourt la suite en comptant la serie courante ; des qu'une note la
+    ferait depasser `max_run`, on bascule sa couleur et la serie repart. Le
+    resultat garantit qu'aucune serie ne depasse la limite.
+    """
+    if max_run < 1 or not types:
+        return list(types)
+
+    result: list[NoteType] = []
+    run = 0
+    for note_type in types:
+        if result and note_type == result[-1]:
+            run += 1
+        else:
+            run = 1
+        if run > max_run:
+            note_type = "KA" if note_type == "DON" else "DON"
+            run = 1
+        result.append(note_type)
+    return result
+
+
 def filter_hold_segments(
     segments: list[tuple[float, float]],
     onset_times: list[float],

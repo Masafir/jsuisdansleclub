@@ -67,18 +67,26 @@ Techniques ajoutées, toutes sous drapeau :
 - **Forçage KA sur caisse claire** (`SNARE_KA_BOOST`, `SNARE_BEAT_TOLERANCE_S`) : les temps 2 et 4 portant une attaque médium deviennent des KA.
 - **Finishes** (`DETECT_FINISHES`) : grosses notes sur crêtes spectrales larges (cymbales, crashes).
 
-**Résultats mesurés sur Haruka Kanata** (90 s, 172 BPM) :
+### La règle d'alternance, mesurée sur des maps humaines
 
-| | legacy | `--new-gen` |
-|---|---|---|
-| Notes | 144 (1,60/s) | 138 (1,53/s) |
-| Ratio DON/KA | 55 / 45 | **25 / 75** |
-| Plus long run de même type | **37** | **14** |
-| Répartition du lead | drums 16 · bass 9 · vocals 6 · other 1 | **drums 30 · vocals 2** |
+Les beatmaps osu!taiko officielles de *Haruka Kanata* (quatre difficultés, mappeur Tachibana_) donnent une convention **identique à tous les niveaux** : longueur médiane d'une série d'une même couleur = **1**, maximum = **4 ou 5**, ratio DON/KA entre **45 et 52 %**. Seule la densité varie (1,76 à 5,10 notes/s) — c'est elle le levier de difficulté, pas l'alternance.
 
-Verdict : le nouveau générateur **corrige le vrai défaut** — les longues séries d'une même couleur passent de 37 à 14 — mais **régresse sur deux axes** : le ratio DON/KA bascule dans l'excès inverse, et la diversité du lead s'effondre. Les deux causes sont identifiées et paramétrables :
-- `SNARE_BEAT_TOLERANCE_S = 0.15` s couvre presque la moitié de chaque temps à 172 BPM : ce n'est plus une détection de caisse claire mais un forçage du contretemps. Piste : descendre vers 0,05 s.
-- `STRUCTURE_LEAD_BOOST = 1.5` fige le lead sur la batterie, puisque la majorité des sections sont étiquetées couplet/intro/outro qui la préfèrent toutes. Piste : baisser le boost, ou diversifier `SECTION_LEAD_PREFERENCE`.
+Notre générateur produisait des séries de **37 notes** de la même couleur. Cause structurelle : trois pistes sur quatre sont monochromes à la source — `bass` fournit 229 DON et 0 KA, `vocals` 0 DON et 256 KA, `other` 1 DON et 253 KA. Seule la batterie porte les deux couleurs (kick → DON, caisse claire → KA). Une phrase menée par la basse ou la voix était donc monochrome par construction.
+
+Trois mécanismes, tous sous drapeau, corrigent cela :
+- `USE_RUN_CAP` / `MAX_SAME_TYPE_RUN` : plafonne les séries, en basculant la couleur d'une note dès que la série dépasserait la limite. C'est la traduction directe de la convention relevée.
+- `USE_RELATIVE_NOTE_TYPE` : la couleur suit le **contour de sa propre piste** — chaque note est comparée à la brillance médiane de sa piste plutôt qu'à un seuil absolu. Une ligne de chant alterne alors selon qu'elle monte ou descend, comme le fait un charter humain sur une mélodie.
+- `USE_DRUM_BACKBONE_SHARE` : réserve une part du budget à la batterie et lui rend ses **deux** couleurs, là où l'ossature était filtrée aux seuls DON et ne recevait que les miettes du budget.
+
+**Résultats mesurés** (Haruka Kanata, 90 s) :
+
+| | legacy | `--new-gen` | référence Kantan |
+|---|---|---|---|
+| Notes/s | 1,60 | 1,61 | 1,76 |
+| DON % | 55 | 37 | 45 |
+| Séries : médiane / max | 2 / **37** | 1 / **4** | 1 / **4** |
+
+L'alternance est désormais alignée sur la convention humaine. Restent deux écarts : le ratio DON/KA à 37 % (contre 45-52 %), et les slides moins nombreuses qu'en legacy, le backtracking rendant assez d'onsets sur la voix pour faire passer des envolées pour du chant scandé.
 
 Deux fonctionnalités restent inopérantes : les **finishes** ne produisent aucune note et le champ `finish` n'existe pas côté client, et les **tenues disparaissent** en `--new-gen` (3 → 0 sur My Hero Academia), probablement parce que le backtracking rend davantage d'onsets sur la voix, ce qui fait classer les envolées comme du chant scandé.
 

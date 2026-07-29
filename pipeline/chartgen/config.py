@@ -113,6 +113,20 @@ NOVELTY_HISTORY_PHRASES = 8
 #: devant une piste silencieuse.
 NOVELTY_FLOOR = 0.25
 
+#: Reserve une part du budget a l'ossature de batterie, et lui laisse ses
+#: deux couleurs au lieu des seuls DON.
+USE_DRUM_BACKBONE_SHARE = False
+
+#: Part du budget d'une phrase reservee a l'ossature de batterie, quand le lead
+#: n'est pas la batterie elle-meme.
+#:
+#: Sans reserve, un lead dense mangeait tout le budget et la phrase entiere
+#: prenait la couleur unique de sa piste — bass ne produit que des DON, vocals
+#: que des KA — d'ou des blocs de 15 a 40 notes de la meme couleur. La batterie
+#: est la seule piste qui porte les deux couleurs (kick -> DON, caisse claire
+#: -> KA) : lui garantir une part garantit l'alternance.
+BACKBONE_BUDGET_SHARE = 0.35
+
 #: Un pretendant doit depasser le lead en place de ce facteur pour le detroner.
 #: L'attention humaine est stable par phrases ; un chart qui zappe est
 #: illisible.
@@ -222,12 +236,42 @@ CLIENT_CHARTS_DIR = REPO_ROOT / "client" / "public" / "charts"
 #: une — l'oubli de USE_HPSS avait desactive l'etape la plus couteuse sans le
 #: moindre message.
 NEW_GEN_FLAGS = (
+    "USE_DRUM_BACKBONE_SHARE",
+    "USE_RUN_CAP",
+    "USE_RELATIVE_NOTE_TYPE",
     "USE_HPSS",
     "USE_ONSET_BACKTRACK",
     "USE_ADAPTIVE_GRID",
     "USE_STRUCTURE_GUIDANCE",
     "DETECT_FINISHES",
 )
+
+#: Plafonne le nombre de notes consecutives de la meme couleur.
+#:
+#: Regle relevee sur les quatre difficultes officielles de « Haruka Kanata »
+#: (osu!taiko, mappeur Tachibana_) : Kantan, Futsuu, Muzukashii et Courage ont
+#: TOUTES une longueur mediane de serie de 1 et un maximum de 4 ou 5. C'est une
+#: convention de charting, pas un accident : au-dela, la main perd l'alternance
+#: et le motif cesse d'etre lisible.
+USE_RUN_CAP = False
+
+#: Longueur maximale d'une serie d'une meme couleur. 4 = la valeur des maps
+#: Kantan et Futsuu ; 5 pour Muzukashii et Courage.
+MAX_SAME_TYPE_RUN = 4
+
+#: Le type de note suit le contour de SA piste, au lieu d'une correspondance
+#: fixe piste -> couleur.
+#:
+#: Mesure du probleme : bass fournit 229 DON et 0 KA, vocals 0 DON et 256 KA,
+#: other 1 DON et 253 KA. Trois pistes sur quatre sont monochromes, donc une
+#: phrase menee par l'une d'elles l'est aussi — d'ou des blocs de 15 a 40 notes
+#: de la meme couleur.
+#:
+#: Avec ce drapeau, on compare la brillance de chaque note a la MEDIANE de sa
+#: propre piste : au-dessus -> KA (bord, claquant), en dessous -> DON (centre,
+#: grave). C'est ce que fait un charter humain sur une ligne de chant, ou la
+#: couleur suit la montee et la descente de la melodie.
+USE_RELATIVE_NOTE_TYPE = False
 
 #: Separation harmonique/percussive avant detection d'onsets : isole la partie
 #: percussive, donc des onsets non pollues par la guitare et les synthes.
