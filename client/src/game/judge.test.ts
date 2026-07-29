@@ -3,9 +3,11 @@ import { Judge } from './judge';
 import { TIMING } from '../config/gameplay';
 import type { Note } from '../chart/types';
 
+// Un Judge ne voit que les notes de SA lane : la session en crée un par
+// couleur. Les fixtures sont donc monochromes, comme en jeu.
 const notes: Note[] = [
   { timeMs: 1000, type: 'DON' },
-  { timeMs: 2000, type: 'KA' },
+  { timeMs: 2000, type: 'DON' },
   { timeMs: 3000, type: 'DON' },
 ];
 
@@ -13,70 +15,65 @@ const makeJudge = () => new Judge(notes);
 
 describe('Judge.hit', () => {
   it('juge PERFECT un appui pile sur la note', () => {
-    const result = makeJudge().hit(1000, 'DON');
+    const result = makeJudge().hit(1000);
     expect(result?.judgement).toBe('PERFECT');
     expect(result?.deltaMs).toBe(0);
     expect(result?.note).toBe(notes[0]);
   });
 
   it('juge PERFECT jusqu’au bord de la fenêtre parfaite', () => {
-    expect(makeJudge().hit(1000 + TIMING.PERFECT_WINDOW_MS, 'DON')?.judgement).toBe(
+    expect(makeJudge().hit(1000 + TIMING.PERFECT_WINDOW_MS)?.judgement).toBe(
       'PERFECT',
     );
-    expect(makeJudge().hit(1000 - TIMING.PERFECT_WINDOW_MS, 'DON')?.judgement).toBe(
+    expect(makeJudge().hit(1000 - TIMING.PERFECT_WINDOW_MS)?.judgement).toBe(
       'PERFECT',
     );
   });
 
   it('juge GOOD au-delà de la fenêtre parfaite, en avance comme en retard', () => {
-    const late = makeJudge().hit(1000 + TIMING.PERFECT_WINDOW_MS + 1, 'DON');
+    const late = makeJudge().hit(1000 + TIMING.PERFECT_WINDOW_MS + 1);
     expect(late?.judgement).toBe('GOOD');
 
-    const early = makeJudge().hit(1000 - TIMING.GOOD_WINDOW_MS, 'DON');
+    const early = makeJudge().hit(1000 - TIMING.GOOD_WINDOW_MS);
     expect(early?.judgement).toBe('GOOD');
     expect(early?.deltaMs).toBe(-TIMING.GOOD_WINDOW_MS);
   });
 
   it('juge MISS un appui dans la fenêtre candidate mais hors de la fenêtre GOOD', () => {
-    const result = makeJudge().hit(1000 + TIMING.GOOD_WINDOW_MS + 1, 'DON');
-    expect(result?.judgement).toBe('MISS');
-  });
-
-  it('juge MISS un appui bien timé mais sur la mauvaise touche', () => {
-    const result = makeJudge().hit(1000, 'KA'); // la note est un DON
+    const result = makeJudge().hit(1000 + TIMING.GOOD_WINDOW_MS + 1);
     expect(result?.judgement).toBe('MISS');
   });
 
   it('ignore un appui hors de toute fenêtre candidate, sans consommer la note', () => {
     const judge = makeJudge();
-    expect(judge.hit(1000 - TIMING.CANDIDATE_WINDOW_MS - 1, 'DON')).toBeNull();
+    expect(judge.hit(1000 - TIMING.CANDIDATE_WINDOW_MS - 1)).toBeNull();
 
     // La note doit rester jouable juste après.
-    expect(judge.hit(1000, 'DON')?.judgement).toBe('PERFECT');
+    expect(judge.hit(1000)?.judgement).toBe('PERFECT');
   });
 
   it('consomme les notes une par une, dans l’ordre', () => {
     const judge = makeJudge();
-    expect(judge.hit(1000, 'DON')?.note).toBe(notes[0]);
-    expect(judge.hit(2000, 'KA')?.note).toBe(notes[1]);
-    expect(judge.hit(3000, 'DON')?.note).toBe(notes[2]);
+    expect(judge.hit(1000)?.note).toBe(notes[0]);
+    expect(judge.hit(2000)?.note).toBe(notes[1]);
+    expect(judge.hit(3000)?.note).toBe(notes[2]);
     expect(judge.isFinished).toBe(true);
   });
 
   it('ne rejuge pas une note déjà consommée', () => {
     const judge = makeJudge();
-    judge.hit(1000, 'DON');
+    judge.hit(1000);
     // Un second appui au même instant ne vise plus rien : la note suivante
     // est à 2000 ms, bien au-delà de la fenêtre candidate.
-    expect(judge.hit(1000, 'DON')).toBeNull();
+    expect(judge.hit(1000)).toBeNull();
   });
 
   it('renvoie null quand toutes les notes ont été jouées', () => {
     const judge = makeJudge();
-    judge.hit(1000, 'DON');
-    judge.hit(2000, 'KA');
-    judge.hit(3000, 'DON');
-    expect(judge.hit(3000, 'DON')).toBeNull();
+    judge.hit(1000);
+    judge.hit(2000);
+    judge.hit(3000);
+    expect(judge.hit(3000)).toBeNull();
   });
 });
 
@@ -99,7 +96,7 @@ describe('Judge.update', () => {
 
   it('ne rate pas une note déjà frappée', () => {
     const judge = makeJudge();
-    judge.hit(1000, 'DON');
+    judge.hit(1000);
     expect(judge.update(1500)).toEqual([]);
   });
 
@@ -119,7 +116,7 @@ describe('Judge.visibleNotes', () => {
 
   it('n’affiche plus les notes déjà jugées', () => {
     const judge = makeJudge();
-    judge.hit(1000, 'DON');
+    judge.hit(1000);
     expect(judge.visibleNotes(1000, 1500)).toEqual([notes[1]]);
   });
 });
@@ -131,6 +128,6 @@ describe('Judge.reset', () => {
     judge.reset();
 
     expect(judge.isFinished).toBe(false);
-    expect(judge.hit(1000, 'DON')?.judgement).toBe('PERFECT');
+    expect(judge.hit(1000)?.judgement).toBe('PERFECT');
   });
 });

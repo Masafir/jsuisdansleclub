@@ -22,6 +22,14 @@ export interface Note {
    * l'absence vaut `false`.
    */
   accent?: boolean;
+  /**
+   * Durée de tenue, en millisecondes : la note est un « hold » (envolée
+   * lyrique, nappe tenue) — appuyer au bon moment, puis rester appuyé.
+   *
+   * Optionnel : absent ou 0 = note frappée normale. Rétrocompatible avec les
+   * partitions déjà générées.
+   */
+  durationMs?: number;
 }
 
 export interface Chart {

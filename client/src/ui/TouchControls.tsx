@@ -3,7 +3,8 @@ import { NOTE_TYPES, type NoteType } from '../config/gameplay';
 import { NOTE_COLORS, toCss } from '../config/theme';
 
 interface TouchControlsProps {
-  onHit: (type: NoteType) => void;
+  onDown: (type: NoteType, pointerId: number) => void;
+  onUp: (type: NoteType, pointerId: number) => void;
 }
 
 /**
@@ -14,13 +15,22 @@ interface TouchControlsProps {
  * les mains sur une suite rapide. Avec deux pouces, cette alternance n'existe
  * pas — quatre boutons ne feraient que réduire les cibles et multiplier les
  * erreurs.
+ *
+ * L'appui ET le relâchement sont transmis : les notes tenues (« holds »)
+ * durent tant que le doigt reste posé. La capture de pointeur garantit que le
+ * relâchement arrive même si le doigt a glissé hors du bouton.
  */
-export function TouchControls({ onHit }: TouchControlsProps) {
+export function TouchControls({ onDown, onUp }: TouchControlsProps) {
   // `pointerdown` plutôt que `click` : un clic n'est émis qu'au relâchement,
   // ce qui ajouterait toute la durée de l'appui à la latence de jugement.
   const press = (type: NoteType) => (event: PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    onHit(type);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    onDown(type, event.pointerId);
+  };
+
+  const release = (type: NoteType) => (event: PointerEvent<HTMLButtonElement>) => {
+    onUp(type, event.pointerId);
   };
 
   return (
@@ -32,6 +42,8 @@ export function TouchControls({ onHit }: TouchControlsProps) {
           className="touch-controls__button"
           style={{ backgroundColor: toCss(NOTE_COLORS[type]) }}
           onPointerDown={press(type)}
+          onPointerUp={release(type)}
+          onPointerCancel={release(type)}
           aria-label={`Frapper ${type}`}
         >
           {type}

@@ -98,10 +98,14 @@ export const HIGHWAY = {
   APPROACH_TIME_MS: 1800,
   /** Position horizontale de la ligne de jugement, en fraction de la largeur. */
   JUDGE_LINE_X_RATIO: 0.15,
-  /** Position verticale de la lane, en fraction de la hauteur. */
-  LANE_Y_RATIO: 0.78,
-  /** Hauteur de la bande de jeu, en fraction de la hauteur. */
-  LANE_HEIGHT_RATIO: 0.16,
+  /**
+   * Position verticale de chaque lane, en fraction de la hauteur. Format
+   * hybride Guitar Hero / taiko : une lane par couleur. Le KA (aigu) est en
+   * haut, le DON (grave) en bas — comme les fréquences.
+   */
+  LANE_Y_RATIOS: { KA: 0.62, DON: 0.84 } satisfies Record<NoteType, number>,
+  /** Hauteur d'une bande de jeu, en fraction de la hauteur. */
+  LANE_HEIGHT_RATIO: 0.14,
   /** Rayon d'une note, en pixels. */
   NOTE_RADIUS_PX: 28,
   /** Rayon du cercle de la ligne de jugement, en pixels. */
@@ -149,12 +153,29 @@ export function missedNoteLingerMs(): number {
  */
 export const TOUCH = {
   /**
-   * La piste remonte pour libérer le bas de l'écran, où se trouvent les
+   * Les pistes remontent pour libérer le bas de l'écran, où se trouvent les
    * boutons — et où se trouvent les pouces.
    */
-  LANE_Y_RATIO: 0.42,
+  LANE_Y_RATIOS: { KA: 0.24, DON: 0.46 } satisfies Record<NoteType, number>,
   /** Hauteur de la zone de boutons, en fraction de la hauteur de l'écran. */
   CONTROLS_HEIGHT_RATIO: 0.34,
+} as const;
+
+/**
+ * Notes tenues (« slides ») : rester appuyé pendant une envolée du morceau.
+ *
+ * Règle indulgente, style Guitar Hero : le début se juge comme un tap normal,
+ * la tenue rapporte des points au prorata du temps tenu, et relâcher tôt
+ * arrête simplement les points — ni MISS, ni combo cassé.
+ */
+export const HOLD = {
+  /** Points par seconde de tenue, avant multiplicateur de combo. */
+  POINTS_PER_SECOND: 150,
+  /**
+   * Relâcher dans les dernières millisecondes d'un hold compte comme une tenue
+   * complète : exiger la milliseconde exacte serait injouable.
+   */
+  END_TOLERANCE_MS: 150,
 } as const;
 
 /** Retour visuel : pulsations lumineuses à chaque appui. */

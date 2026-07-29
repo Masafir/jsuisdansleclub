@@ -5,6 +5,11 @@
  *   - `hit()`   : le joueur appuie, on cherche la note visée et on la juge ;
  *   - `update()`: le temps passe, les notes non frappées deviennent des MISS.
  *
+ * Depuis le passage au format deux lanes (hybride Guitar Hero / taiko), un
+ * Judge ne voit que les notes d'UNE couleur : la session en instancie un par
+ * lane. Le type ne participe donc plus au jugement — frapper l'autre couleur
+ * ne peut plus consommer une note ici, et frapper dans le vide ne coûte rien.
+ *
  * Optimisation à connaître : les notes d'une partition sont **triées par
  * timeMs** (invariant garanti par `parseChart`). On garde donc un curseur
  * `cursor` sur la première note non encore jugée, au lieu de re-parcourir tout
@@ -12,7 +17,7 @@
  * un millier de notes, et cette boucle tourne à 60 images par seconde.
  */
 
-import { TIMING, type Judgement, type NoteType } from '../config/gameplay';
+import { TIMING, type Judgement } from '../config/gameplay';
 import type { Note } from '../chart/types';
 
 export interface JudgeResult {
@@ -42,43 +47,21 @@ export class Judge {
   }
 
   /**
-   * Le joueur vient d'appuyer sur une touche.
+   * Le joueur vient de frapper sur cette file.
    *
    * @param inputTimeMs Instant de l'appui — utiliser `SongClock.getInputTimeMs()`,
    *   qui est corrigé de la latence du casque.
-   * @param type Type de note correspondant à la touche pressée (DON ou KA).
    * @returns Le jugement, ou `null` si aucune note n'était visée : appuyer dans
    *   le silence ne doit rien coûter au joueur, c'est la convention du genre.
    */
-  hit(inputTimeMs: number, type: NoteType): JudgeResult | null {
-    // TODO(amiral): implémenter le jugement d'un appui.
-    //
-    //   1. Prendre la note candidate : `this.notes[this.cursor]`.
-    //      S'il n'y en a plus (isFinished), renvoyer null.
-    //
-    //   2. Calculer l'écart signé : deltaMs = inputTimeMs - note.timeMs
-    //      (négatif = le joueur est en avance).
-    //
-    //   3. Si Math.abs(deltaMs) > TIMING.CANDIDATE_WINDOW_MS, le joueur ne
-    //      visait pas cette note : renvoyer null SANS avancer le curseur
-    //      (la note reste jouable).
-    //
-    //   4. Sinon la note est consommée : avancer this.cursor d'un cran, puis
-    //      déterminer le jugement :
-    //        - mauvais type de touche (type !== note.type)      -> 'MISS'
-    //        - |deltaMs| <= TIMING.PERFECT_WINDOW_MS            -> 'PERFECT'
-    //        - |deltaMs| <= TIMING.GOOD_WINDOW_MS               -> 'GOOD'
-    //        - sinon (dans la fenêtre candidate mais trop loin) -> 'MISS'
-    //
-    //   5. Renvoyer { note, judgement, deltaMs }.
-    const candidateNote = this.notes[this.cursor];
-    
+  hit(inputTimeMs: number): JudgeResult | null {
     if(this.isFinished) {
       return null;
     }
 
+    const candidateNote = this.notes[this.cursor];
     const deltaMs = inputTimeMs - candidateNote.timeMs;
-    
+
     if(Math.abs(deltaMs) > TIMING.CANDIDATE_WINDOW_MS) {
       return null;
     }
@@ -86,10 +69,7 @@ export class Judge {
       this.cursor++;
       let judgement: Judgement;
 
-      if(type !== candidateNote.type) {
-        judgement = 'MISS';
-      }
-      else if(Math.abs(deltaMs) <= TIMING.PERFECT_WINDOW_MS) {
+      if(Math.abs(deltaMs) <= TIMING.PERFECT_WINDOW_MS) {
         judgement = 'PERFECT';
       }
       else if(Math.abs(deltaMs) <= TIMING.GOOD_WINDOW_MS) {

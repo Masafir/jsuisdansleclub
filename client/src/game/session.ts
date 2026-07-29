@@ -7,6 +7,7 @@
  */
 
 import { Judge } from './judge';
+import { HoldManager, type HoldRelease } from './holds';
 import { ScoreTracker, isPlayerDead, type ScoreState } from './scoring';
 import { SongClock } from '../audio/clock';
 import { SfxPlayer } from '../audio/sfx';
@@ -16,6 +17,7 @@ import type { Chart, Note } from '../chart/types';
 import {
   COUNTDOWN,
   HIGHWAY,
+  NOTE_TYPES,
   missedNoteLingerMs,
   musicVolume,
   noteTypeForKey,
@@ -56,7 +58,8 @@ export class GameSession {
   private readonly renderer: HighwayRenderer;
   private readonly onSnapshot: (snapshot: SessionSnapshot) => void;
 
-  private readonly judge: Judge;
+  private readonly judges: Record<NoteType, Judge>;
+  private readonly holds = new HoldManager();
   private readonly tracker = new ScoreTracker();
   private readonly clock: SongClock;
   private readonly sfx = new SfxPlayer();
@@ -81,7 +84,12 @@ export class GameSession {
     this.chart = options.chart;
     this.renderer = options.renderer;
     this.onSnapshot = options.onSnapshot;
-    this.judge = new Judge(options.chart.notes);
+    // Un Judge par lane : chaque couleur est une file indépendante. Frapper le
+    // rouge ne peut pas consommer une note bleue, et réciproquement.
+    this.judges = {
+      DON: new Judge(options.chart.notes.filter((note) => note.type === 'DON')),
+      KA: new Judge(options.chart.notes.filter((note) => note.type === 'KA')),
+    };
     this.clock = new SongClock({
       now: () => getAudioContext().currentTime,
       calibrationOffsetMs: options.calibrationOffsetMs,
@@ -126,20 +134,28 @@ export class GameSession {
     this.loop();
   }
 
-  /** Un appui clavier du joueur. */
-  handleKey(key: string): void {
+  /** Enfoncement d'une touche clavier. */
+  handleKeyDown(key: string): void {
     const type = noteTypeForKey(key);
-    if (type) this.handleNote(type);
+    if (type) this.handleNoteDown(type, `key:${key.toLowerCase()}`);
+  }
+
+  /** Relâchement d'une touche clavier. */
+  handleKeyUp(key: string): void {
+    const type = noteTypeForKey(key);
+    if (type) this.handleNoteUp(type, `key:${key.toLowerCase()}`);
   }
 
   /**
-   * Le joueur frappe une note d'un type donné, quelle qu'en soit la source :
-   * clavier au bureau, bouton tactile sur mobile.
+   * Le joueur frappe une lane, quelle que soit la source : touche clavier ou
+   * doigt sur mobile. `source` identifie qui appuie, pour que le hold survive
+   * tant qu'une des deux touches de la lane reste enfoncée.
    */
-  handleNote(type: NoteType): void {
+  handleNoteDown(type: NoteType, source: string): void {
     if (this.status !== 'playing') return;
+    this.holds.press(type, source);
 
-    const result = this.judge.hit(this.clock.getInputTimeMs(), type);
+    const result = this.judges[type].hit(this.clock.getInputTimeMs());
     if (!result) return;
 
     // Tout appui ayant vise une note compte, y compris raté : c'est justement
@@ -150,11 +166,36 @@ export class GameSession {
     this.tracker.register(result.judgement);
     this.lastJudgement = result.judgement;
     this.sfx.play(result.judgement);
-    this.renderer.spawnPulse(result.judgement, this.clock.getSongTimeMs());
+    this.renderer.spawnPulse(result.judgement, this.clock.getSongTimeMs(), type);
 
-    // Une note frappée trop tôt, trop tard ou avec la mauvaise touche reste
-    // visible : le joueur voit passer ce qu'il a manqué.
-    if (result.judgement === 'MISS') this.missedNotes.push(result.note);
+    if (result.judgement === 'MISS') {
+      // Une note frappée trop tôt ou trop tard reste visible : le joueur voit
+      // passer ce qu'il a manqué.
+      this.missedNotes.push(result.note);
+    } else if (result.note.durationMs) {
+      // Hit réussi sur une note à durée : la tenue commence.
+      this.holds.begin(result.note);
+    }
+  }
+
+  /** Le joueur relâche une lane. */
+  handleNoteUp(type: NoteType, source: string): void {
+    if (this.status !== 'playing') {
+      this.holds.release(type, source, 0);
+      return;
+    }
+    const release = this.holds.release(type, source, this.clock.getSongTimeMs());
+    if (release) this.settleHold(release);
+  }
+
+  /** Crédite une tenue terminée, complète ou non. */
+  private settleHold(release: HoldRelease): void {
+    this.tracker.registerHold(release.heldMs);
+    if (release.completed) {
+      // Une tenue menée au bout mérite le feedback maximal.
+      this.sfx.play('PERFECT');
+      this.renderer.spawnPulse('PERFECT', this.clock.getSongTimeMs(), release.note.type);
+    }
   }
 
   private loop = (): void => {
@@ -167,16 +208,28 @@ export class GameSession {
     }
 
     if (this.status === 'playing') {
-      for (const missed of this.judge.update(songTimeMs)) {
-        this.tracker.register('MISS');
-        this.lastJudgement = 'MISS';
-        this.renderer.spawnPulse('MISS', songTimeMs);
-        this.missedNotes.push(missed);
+      for (const type of NOTE_TYPES) {
+        for (const missed of this.judges[type].update(songTimeMs)) {
+          this.tracker.register('MISS');
+          this.lastJudgement = 'MISS';
+          this.renderer.spawnPulse('MISS', songTimeMs, type);
+          this.missedNotes.push(missed);
+        }
       }
+
+      // Tenues arrivées naturellement à leur terme.
+      for (const release of this.holds.update(songTimeMs)) {
+        this.settleHold(release);
+      }
+
+      const chartDone =
+        this.judges.DON.isFinished &&
+        this.judges.KA.isFinished &&
+        this.holds.activeHolds.length === 0;
 
       if (isPlayerDead(this.tracker, songTimeMs, this.chart.durationMs)) {
         this.finish('dead');
-      } else if (songTimeMs >= this.chart.durationMs || this.judge.isFinished) {
+      } else if (songTimeMs >= this.chart.durationMs || chartDone) {
         this.finish('survived');
       }
     }
@@ -189,9 +242,14 @@ export class GameSession {
     );
 
     this.renderer.renderNotes(
-      [...this.missedNotes, ...this.judge.visibleNotes(songTimeMs, HIGHWAY.APPROACH_TIME_MS)],
+      [
+        ...this.missedNotes,
+        ...this.judges.DON.visibleNotes(songTimeMs, HIGHWAY.APPROACH_TIME_MS),
+        ...this.judges.KA.visibleNotes(songTimeMs, HIGHWAY.APPROACH_TIME_MS),
+      ],
       songTimeMs,
     );
+    this.renderer.renderActiveHolds(this.holds.activeHolds, songTimeMs);
     this.renderer.updatePulses(songTimeMs);
     this.renderer.updateJudgeCircle(songTimeMs);
     this.emit(songTimeMs);
@@ -222,6 +280,7 @@ export class GameSession {
     this.missedNotes = [];
     this.deltaSumMs = 0;
     this.deltaCount = 0;
+    this.holds.reset();
     this.renderer.clear();
   }
 

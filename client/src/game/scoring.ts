@@ -6,7 +6,7 @@
  * valeur centrale du jeu, bien au-delà du simple affichage du score.
  */
 
-import { SCORING, SURVIVAL, type Judgement } from '../config/gameplay';
+import { HOLD, SCORING, SURVIVAL, type Judgement } from '../config/gameplay';
 
 export interface ScoreState {
   score: number;
@@ -89,6 +89,20 @@ export class ScoreTracker {
     const points = SCORING.POINTS[judgement] * this.multiplier;
     
     this._score += Math.round(points);
+  }
+
+  /**
+   * Crédite la tenue d'un hold, au prorata du temps tenu.
+   *
+   * Volontairement hors du système de jugement : la tenue ne compte ni dans le
+   * combo ni dans le ratio de survie (seul le hit initial y figure). Relâcher
+   * tôt arrête les points, sans punir — règle indulgente, style Guitar Hero.
+   */
+  registerHold(heldMs: number): void {
+    if (heldMs <= 0) return;
+    this._score += Math.round(
+      (heldMs / 1000) * HOLD.POINTS_PER_SECOND * this.multiplier,
+    );
   }
 
   get state(): ScoreState {

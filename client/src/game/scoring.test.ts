@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ScoreTracker, isPlayerDead } from './scoring';
-import { SCORING, SURVIVAL, type Judgement } from '../config/gameplay';
+import { HOLD, SCORING, SURVIVAL, type Judgement } from '../config/gameplay';
 
 function trackerWith(...judgements: Judgement[]): ScoreTracker {
   const tracker = new ScoreTracker();
@@ -103,6 +103,38 @@ describe('ScoreTracker — ratio de réussite', () => {
   it('vaut la proportion de notes réussies', () => {
     expect(trackerWith('PERFECT', 'MISS').successRatio).toBe(0.5);
     expect(trackerWith('PERFECT', 'GOOD', 'GOOD', 'MISS').successRatio).toBe(0.75);
+  });
+});
+
+describe('ScoreTracker — tenues (holds)', () => {
+  it('crédite la tenue au prorata du temps', () => {
+    const tracker = new ScoreTracker();
+    tracker.registerHold(2000);
+    expect(tracker.state.score).toBe(HOLD.POINTS_PER_SECOND * 2);
+  });
+
+  it('applique le multiplicateur de combo courant', () => {
+    const tracker = trackerWith(...repeat('PERFECT', SCORING.COMBO_STEP));
+    const before = tracker.state.score;
+    tracker.registerHold(1000);
+    expect(tracker.state.score - before).toBe(
+      Math.round(HOLD.POINTS_PER_SECOND * tracker.multiplier),
+    );
+  });
+
+  it('ne touche ni au combo ni au ratio de survie', () => {
+    const tracker = trackerWith('PERFECT');
+    tracker.registerHold(5000);
+    expect(tracker.state.combo).toBe(1);
+    expect(tracker.judgedCount).toBe(1);
+    expect(tracker.successRatio).toBe(1);
+  });
+
+  it('ignore une tenue nulle ou négative', () => {
+    const tracker = new ScoreTracker();
+    tracker.registerHold(0);
+    tracker.registerHold(-500);
+    expect(tracker.state.score).toBe(0);
   });
 });
 

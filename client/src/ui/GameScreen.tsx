@@ -20,12 +20,21 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
   const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isTouch = useTouchDevice();
-  const laneYRatio = isTouch ? TOUCH.LANE_Y_RATIO : HIGHWAY.LANE_Y_RATIO;
+  const laneYRatios = isTouch ? TOUCH.LANE_Y_RATIOS : HIGHWAY.LANE_Y_RATIOS;
 
   // Les boutons tactiles passent par la session sans passer par un faux
   // événement clavier : la source de l'appui ne regarde pas le gameplay.
   const sessionRef = useRef<GameSession | null>(null);
-  const hit = useCallback((type: NoteType) => sessionRef.current?.handleNote(type), []);
+  const touchDown = useCallback(
+    (type: NoteType, pointerId: number) =>
+      sessionRef.current?.handleNoteDown(type, `pointer:${pointerId}`),
+    [],
+  );
+  const touchUp = useCallback(
+    (type: NoteType, pointerId: number) =>
+      sessionRef.current?.handleNoteUp(type, `pointer:${pointerId}`),
+    [],
+  );
 
   // Passer par une ref évite que l'effet ne dépende de l'identité du callback :
   // sans ça, un simple re-rendu du parent relancerait la partie depuis le début.
@@ -42,14 +51,19 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
     let finished = false;
 
     const onKeyDown = (event: KeyboardEvent) => {
+      // `repeat` : l'auto-répétition du clavier n'est pas une frappe, et
+      // pendant un hold elle arroserait la file de faux appuis.
       if (event.repeat) return;
-      session?.handleKey(event.key);
+      session?.handleKeyDown(event.key);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      session?.handleKeyUp(event.key);
     };
 
     void (async () => {
       try {
         const created = new HighwayRenderer();
-        await created.init(host, laneYRatio);
+        await created.init(host, laneYRatios);
         // React StrictMode démonte puis remonte systématiquement les composants
         // en développement : l'initialisation de Pixi peut donc se terminer
         // alors que l'écran n'existe plus. Sans ce garde, un second canvas
@@ -75,6 +89,7 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
 
         sessionRef.current = session;
         window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
         await session.start();
       } catch (cause) {
         if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
@@ -84,16 +99,20 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
     return () => {
       cancelled = true;
       window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       session?.stop();
       sessionRef.current = null;
       renderer?.destroy();
     };
-  }, [chart, laneYRatio]);
+  }, [chart, laneYRatios]);
 
   // Hauteur du bord supérieur de la piste, mesurée depuis le bas de l'écran :
   // la légende s'y accroche pour ne jamais recouvrir les notes, quelle que soit
   // la taille de la fenêtre.
-  const laneTopFromBottom = `${(1 - laneYRatio + HIGHWAY.LANE_HEIGHT_RATIO / 2) * 100}%`;
+  // La lane la plus haute (KA) sert de référence : la légende s'accroche
+  // au-dessus d'elle pour ne recouvrir aucune des deux pistes.
+  const highestLaneRatio = Math.min(...Object.values(laneYRatios));
+  const laneTopFromBottom = `${(1 - highestLaneRatio + HIGHWAY.LANE_HEIGHT_RATIO / 2) * 100}%`;
 
   return (
     <main
@@ -109,7 +128,11 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
 
       {/* Au clavier, un rappel discret ; au doigt, les boutons sont eux-mêmes
           le rappel — inutile de dupliquer. */}
-      {isTouch ? <TouchControls onHit={hit} /> : <KeyLegend variant="floating" />}
+      {isTouch ? (
+        <TouchControls onDown={touchDown} onUp={touchUp} />
+      ) : (
+        <KeyLegend variant="floating" />
+      )}
 
       {snapshot && snapshot.status !== 'countdown' && (
         <Hud

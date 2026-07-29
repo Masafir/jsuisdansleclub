@@ -2,8 +2,10 @@
  * Partition de test écrite à la main, pour valider le gameplay avant que le
  * pipeline Python n'existe.
  *
- * Motif simple et lisible : une note sur chaque temps, avec des KA sur les
- * contretemps toutes les deux mesures pour varier un peu.
+ * Motif lisible : une note sur chaque temps, des KA sur les contretemps une
+ * mesure sur deux, et toutes les quatre mesures une « envolée » — un hold KA
+ * de deux temps pendant que les DON continuent en dessous. C'est le cas
+ * d'usage exact du format deux lanes : tenir d'une main, frapper de l'autre.
  */
 
 import { CHART_FORMAT_VERSION, type Chart, type Note } from './types';
@@ -20,6 +22,10 @@ const TEST_OFFSET_MS = 20;
 const BEATS_PER_BAR = 4;
 /** Une mesure sur deux reçoit des contretemps. */
 const SYNCOPATED_BAR_INTERVAL = 2;
+/** Une mesure sur quatre porte une envolée tenue. */
+const HOLD_BAR_INTERVAL = 4;
+/** Durée d'une envolée, en temps. */
+const HOLD_BEATS = 2;
 
 function buildTestNotes(): Note[] {
   const msPerBeat = 60_000 / TEST_BPM;
@@ -28,9 +34,22 @@ function buildTestNotes(): Note[] {
 
   for (let beat = 0; beat < beatCount; beat++) {
     const bar = Math.floor(beat / BEATS_PER_BAR);
+    const beatInBar = beat % BEATS_PER_BAR;
+    const holdBar = bar % HOLD_BAR_INTERVAL === HOLD_BAR_INTERVAL - 1;
+
+    // Les DON tiennent la pulsation sur chaque temps, y compris sous les
+    // envolées : c'est le parallèle tenue + frappes qu'on veut éprouver.
     notes.push({ timeMs: TEST_OFFSET_MS + beat * msPerBeat, type: 'DON' });
 
-    if (bar % SYNCOPATED_BAR_INTERVAL === 1) {
+    if (holdBar) {
+      if (beatInBar === 0) {
+        notes.push({
+          timeMs: TEST_OFFSET_MS + beat * msPerBeat,
+          type: 'KA',
+          durationMs: HOLD_BEATS * msPerBeat,
+        });
+      }
+    } else if (bar % SYNCOPATED_BAR_INTERVAL === 1) {
       notes.push({
         timeMs: TEST_OFFSET_MS + (beat + 0.5) * msPerBeat,
         type: 'KA',
