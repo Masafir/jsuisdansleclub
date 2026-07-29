@@ -78,15 +78,31 @@ Trois mécanismes, tous sous drapeau, corrigent cela :
 - `USE_RELATIVE_NOTE_TYPE` : la couleur suit le **contour de sa propre piste** — chaque note est comparée à la brillance médiane de sa piste plutôt qu'à un seuil absolu. Une ligne de chant alterne alors selon qu'elle monte ou descend, comme le fait un charter humain sur une mélodie.
 - `USE_DRUM_BACKBONE_SHARE` : réserve une part du budget à la batterie et lui rend ses **deux** couleurs, là où l'ossature était filtrée aux seuls DON et ne recevait que les miettes du budget.
 
-**Résultats mesurés** (Haruka Kanata, 90 s) :
+### Le décalage temporel était systématique
 
-| | legacy | `--new-gen` | référence Kantan |
+Symptôme rapporté : « ça ne hit pas toujours au bon moment ». La mesure note à note contre la beatmap humaine a montré un **biais constant de ~65 ms** — nos notes tombaient tard — et non une imprécision aléatoire. Un décalage constant est bien plus perceptible qu'une gigue : il fausse chaque note dans le même sens.
+
+Cause : le flux spectral **culmine après le début de l'attaque**. La fenêtre d'analyse fait 2048 échantillons (~93 ms à 22 050 Hz) et le pic tombe une à deux trames plus loin. `USE_ONSET_LATENCY_COMPENSATION` retranche cette latence **en sortie de chaîne** : appliquée à la détection, la quantification la réabsorbait aussitôt en recollant les notes sur la grille.
+
+Deux découvertes en chemin :
+- **Le backtracking dégrade nettement** (concordance de 87 % → 54 %). Censé recaler l'onset sur l'attaque réelle, il sur-corrige et place les notes en avance. Retiré de `NEW_GEN_FLAGS`.
+- **Le tempo constant** (`USE_CONSTANT_TEMPO`) supprime la gigue de ±25 ms que `beat_track` laisse sur chaque temps, et qui dérivait jusqu'à 539 ms en fin de morceau. Un mappeur time un morceau avec un BPM et un offset, pas une position par temps.
+
+### Résultats mesurés (Haruka Kanata, comparaison note à note)
+
+| | legacy | `--new-gen` | cible humaine |
 |---|---|---|---|
-| Notes/s | 1,60 | 1,61 | 1,76 |
-| DON % | 55 | 37 | 45 |
-| Séries : médiane / max | 2 / **37** | 1 / **4** | 1 / **4** |
+| Écart médian à la note humaine | 64 ms | **11 ms** | — |
+| Notes à moins de 25 ms | 13 % | **85 %** | — |
+| DON % | 55 | **52** | 45-52 |
+| Séries : médiane / max | 2 / 37 | **1 / 4** | 1 / 4-5 |
+| Slides | 4 | 5 | — |
 
-L'alternance est désormais alignée sur la convention humaine. Restent deux écarts : le ratio DON/KA à 37 % (contre 45-52 %), et les slides moins nombreuses qu'en legacy, le backtracking rendant assez d'onsets sur la voix pour faire passer des envolées pour du chant scandé.
+Le seuil des tenues a aussi dû être assoupli (`USE_RELAXED_HOLDS`) : à 2,0 attaques/s, 9 des 13 envolées détectées étaient rejetées comme du chant scandé, alors qu'une envolée compte naturellement 2 à 3 syllabes par seconde.
+
+**Leçon de méthode** : une mesure contre une grille théorique peut être circulaire — comparer nos notes à une grille dont nous fixons nous-mêmes les paramètres validait notre propre grille, pas la musique. Seule la comparaison **note à note avec une partition humaine** a révélé le biais de 65 ms. Et la beatmap de référence utilise plus de 250 points de timing, donc aucune grille à BPM unique ne la décrit.
+
+Restent ouverts : des trous ponctuels de densité quand le lead choisi est silencieux, et les finishes qui ne produisent rien (le champ `finish` n'existe même pas côté client).
 
 Deux fonctionnalités restent inopérantes : les **finishes** ne produisent aucune note et le champ `finish` n'existe pas côté client, et les **tenues disparaissent** en `--new-gen` (3 → 0 sur My Hero Academia), probablement parce que le backtracking rend davantage d'onsets sur la voix, ce qui fait classer les envolées comme du chant scandé.
 

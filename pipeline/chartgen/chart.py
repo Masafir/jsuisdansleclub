@@ -197,8 +197,13 @@ def detect_holds(
         # et supprimait les tenues. Le seuil HOLD_MAX_ONSETS_PER_S est calibre
         # sur la detection simple.
         onsets = analysis.detect_onset_times(envelope, sample_rate)
+        max_onsets = (
+            config.HOLD_MAX_ONSETS_PER_S_RELAXED
+            if config.USE_RELAXED_HOLDS
+            else config.HOLD_MAX_ONSETS_PER_S
+        )
         segments = notes.filter_hold_segments(
-            segments, onsets, config.HOLD_MAX_ONSETS_PER_S, config.HOLD_MAX_DURATION_S
+            segments, onsets, max_onsets, config.HOLD_MAX_DURATION_S
         )
 
         for start, end in segments:
@@ -234,6 +239,8 @@ def notes_from_stems(
     # Le beat tracking se fait sur le mix complet : plus fiable que sur une
     # piste isolee.
     beats = analysis.beat_times(samples, sample_rate)
+    if use_new_gen and config.USE_CONSTANT_TEMPO:
+        beats = analysis.regular_beats(beats)
     all_onsets = sorted(t for events in streams.values() for t, _, _ in events)
     density = analysis.onsets_per_beat(all_onsets, beats)
     accents = analysis.find_accent_beats(density)
@@ -365,6 +372,13 @@ def notes_from_stems(
     note_types = [note_types[index] for index in order]
     durations = [durations[index] for index in order]
 
+    # Compensation de la latence de detection, appliquee EN SORTIE et non a la
+    # detection : la quantification recolle les instants sur la grille et
+    # absorberait toute correction faite en amont.
+    if use_new_gen and config.USE_ONSET_LATENCY_COMPENSATION:
+        latency_s = config.ONSET_LATENCY_MS / 1000
+        times = [max(0.0, time_s - latency_s) for time_s in times]
+
     # Dernier passage : plafonner les series d'une meme couleur. En dernier,
     # apres l'insertion des tenues, pour que le plafond porte sur la partition
     # telle que le joueur la verra.
@@ -416,6 +430,8 @@ def notes_from_bands(
     beats: list[float] = []
     if config.USE_GRID_QUANTIZATION:
         beats = analysis.beat_times(samples, sample_rate)
+        if use_new_gen and config.USE_CONSTANT_TEMPO:
+            beats = analysis.regular_beats(beats)
         all_onsets = sorted(t for times in detected.values() for t in times)
         density = analysis.onsets_per_beat(all_onsets, beats)
         accents = analysis.find_accent_beats(density)

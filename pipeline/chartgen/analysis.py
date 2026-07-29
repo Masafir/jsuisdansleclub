@@ -285,6 +285,68 @@ def beat_times(samples: np.ndarray, sample_rate: int) -> list[float]:
     return [float(t) for t in times]
 
 
+def fit_constant_tempo(
+    beats: list[float],
+    search_ratio: float = config.TEMPO_FIT_SEARCH_RATIO,
+    steps: int = config.TEMPO_FIT_STEPS,
+) -> tuple[float, float]:
+    """Ajuste une periode et une phase constantes sur les temps detectes.
+
+    Renvoie (periode en secondes, phase en secondes).
+
+    Pourquoi : `beat_track` trouve les bons temps mais avec ~25 ms de gigue sur
+    chacun. Mesure sur Haruka Kanata — intervalles de 325 a 395 ms autour d'un
+    vrai tempo de 342.86 ms, sans aucun temps saute ni ajoute. Construire la
+    grille en interpolant entre ces temps propage la gigue dans les notes, qui
+    tombent alors a cote : la derive atteignait 539 ms en fin de morceau.
+    Ajuster un tempo constant retrouve 174.8 BPM contre 175.0 reels.
+
+    C'est ainsi qu'un mappeur time un morceau : un BPM et un offset, pas une
+    position par temps. La limite est assumee — un morceau qui change vraiment
+    de tempo serait moins bien servi.
+
+    Methode : pour chaque periode candidate, la phase optimale est la moyenne
+    circulaire des temps modulo la periode. La concentration de cette moyenne
+    mesure la qualite de l'ajustement ; on garde la meilleure.
+    """
+    if len(beats) < 2:
+        return 0.0, 0.0
+
+    times = np.asarray(beats)
+    median_period = float(np.median(np.diff(times)))
+    candidates = np.linspace(
+        median_period * (1 - search_ratio), median_period * (1 + search_ratio), steps
+    )
+
+    best_strength, best_period, best_phase = -1.0, median_period, 0.0
+    for period in candidates:
+        angles = 2 * np.pi * (times % period) / period
+        mean_vector = np.exp(1j * angles).mean()
+        strength = float(np.abs(mean_vector))
+        if strength > best_strength:
+            best_strength = strength
+            best_period = float(period)
+            best_phase = float(
+                (np.angle(mean_vector) % (2 * np.pi)) / (2 * np.pi) * period
+            )
+
+    return best_period, best_phase
+
+
+def regular_beats(beats: list[float]) -> list[float]:
+    """Temps regeneres sur un tempo constant, couvrant la meme plage."""
+    if len(beats) < 2:
+        return list(beats)
+
+    period, phase = fit_constant_tempo(beats)
+    if period <= 0:
+        return list(beats)
+
+    first = int(np.floor((beats[0] - phase) / period))
+    last = int(np.ceil((beats[-1] - phase) / period))
+    return [phase + index * period for index in range(first, last + 1)]
+
+
 def onsets_per_beat(onset_times: list[float], beats: list[float]) -> list[float]:
     """Nombre d'attaques detectees sur chaque temps.
 

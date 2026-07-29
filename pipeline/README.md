@@ -82,27 +82,36 @@ Notre densité (~1,5/s) situe nos partitions au niveau **Kantan**.
 
 ### État actuel
 
-| | legacy | `--new-gen` | référence Kantan |
+Mesuré sur Haruka Kanata, en comparant **note à note** avec la beatmap humaine :
+
+| | legacy | `--new-gen` | cible humaine |
 |---|---|---|---|
-| Notes/s | 1,60 | 1,61 | 1,76 |
-| DON % | 55 | 37 | 45 |
-| Séries : médiane / max | 2 / **37** | 1 / **4** | 1 / **4** |
-| Slides | 4 | 1 | — |
+| Écart médian à la note humaine | 64 ms | **11 ms** | — |
+| Notes à moins de 25 ms d'une note humaine | 13 % | **85 %** | — |
+| DON % | 55 | **52** | 45-52 |
+| Séries : médiane / max | 2 / 37 | **1 / 4** | 1 / 4-5 |
+| Slides | 4 | 5 | — |
 
-Le plafonnement des séries aligne exactement le générateur sur la convention
-humaine. Restent deux écarts :
+Trois mesures ont amené ces résultats :
 
-- **Ratio DON/KA à 37 %** contre 45-52 % attendus. Cause : trois pistes sur
-  quatre sont monochromes à la source (bass ne fournit que des DON, vocals et
-  other quasi que des KA), et `USE_RELATIVE_NOTE_TYPE` ne corrige le contour
-  que de la piste menante.
-- **Moins de slides** qu'en legacy (1 contre 4). Le backtracking rend ~50 %
-  d'onsets en plus sur la voix, ce qui fait classer des envolées comme du chant
-  scandé malgré le contournement mis en place dans `detect_holds`.
+- **Le décalage était systématique**, pas aléatoire : nos notes tombaient ~65 ms
+  trop tard, le flux spectral culminant après le début de l'attaque (fenêtre
+  d'analyse de 2048 échantillons). `USE_ONSET_LATENCY_COMPENSATION` retranche
+  cette latence **en sortie** — appliquée à la détection, la quantification
+  l'absorbait.
+- **Le backtracking dégradait fortement** : il fait tomber la concordance de
+  87 % à 54 % en sur-corrigeant. Retiré de `NEW_GEN_FLAGS`, le drapeau reste
+  pour le re-tester.
+- **Le seuil des tenues était trop strict** : à 2,0 attaques/s, 9 des 13
+  envolées détectées étaient rejetées alors qu'une envolée chantée compte
+  naturellement 2 à 3 syllabes par seconde. `USE_RELAXED_HOLDS` porte le
+  plafond à 3,2.
 
-Et une fonctionnalité ne produit rien : **les finishes**. `detect_finishes`
-rend zéro note sur les morceaux testés, et le champ `finish` n'existe ni dans
-`Chart` côté client ni dans le rendu — même produit, il serait ignoré.
+Restent deux points ouverts : des **trous ponctuels** (une tranche de 5 s à
+2 notes malgré une énergie pleine, quand le lead choisi est silencieux à ce
+moment), et **les finishes** qui ne produisent rien — `detect_finishes` rend
+zéro note et le champ `finish` n'existe ni dans `Chart` côté client ni dans le
+rendu.
 
 Les maps de référence sont dans `F:\jsuisdansleclub\osumap\` (accessibles sous
 `/mnt/f/...` depuis WSL) et se ré-analysent à tout moment pour recalibrer.

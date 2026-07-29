@@ -113,6 +113,26 @@ NOVELTY_HISTORY_PHRASES = 8
 #: devant une piste silencieuse.
 NOVELTY_FLOOR = 0.25
 
+#: Regularise la grille sur un tempo constant au lieu de suivre les temps
+#: detectes un a un.
+#:
+#: `beat_track` trouve les bons temps mais avec ~25 ms de gigue chacun, que la
+#: grille propage ensuite dans les notes : mesure sur Haruka Kanata, la derive
+#: atteignait 539 ms en fin de morceau, soit une note et demie de decalage.
+#: Un ajustement a tempo constant retrouve 174.8 BPM contre 175.0 reels.
+#:
+#: Limite assumee : un morceau qui change vraiment de tempo est moins bien
+#: servi. La grande majorite du repertoire pop/rock a un tempo stable.
+USE_CONSTANT_TEMPO = False
+
+#: Plage de recherche du tempo, en fraction de l'intervalle median mesure.
+#: 0.08 = plus ou moins 8 %, assez large pour la gigue, assez etroit pour ne
+#: jamais basculer sur le double ou la moitie du tempo.
+TEMPO_FIT_SEARCH_RATIO = 0.08
+
+#: Nombre de periodes candidates testees dans cette plage.
+TEMPO_FIT_STEPS = 400
+
 #: Reserve une part du budget a l'ossature de batterie, et lui laisse ses
 #: deux couleurs au lieu des seuls DON.
 USE_DRUM_BACKBONE_SHARE = False
@@ -159,6 +179,17 @@ HOLD_RMS_PERCENTILE = 90
 #: Au-dela de cette densite d'attaques (par seconde) dans le segment, ce n'est
 #: pas une tenue mais une phrase rythmique (du chant scande, du rap).
 HOLD_MAX_ONSETS_PER_S = 2.0
+
+#: Assouplit ce seuil pour les tenues.
+#:
+#: Mesure sur Haruka Kanata : a 2.0/s, 9 des 13 segments soutenus detectes sur
+#: la voix etaient rejetes, la plupart entre 2.2 et 3.0 attaques/s — or une
+#: envolee chantee compte naturellement deux a trois syllabes par seconde. Le
+#: seuil d'origine etait calibre avant HPSS, qui change le comptage.
+USE_RELAXED_HOLDS = False
+
+#: Plafond assoupli, en attaques par seconde.
+HOLD_MAX_ONSETS_PER_S_RELAXED = 3.2
 
 # --- Grille rythmique ------------------------------------------------------
 
@@ -236,11 +267,13 @@ CLIENT_CHARTS_DIR = REPO_ROOT / "client" / "public" / "charts"
 #: une — l'oubli de USE_HPSS avait desactive l'etape la plus couteuse sans le
 #: moindre message.
 NEW_GEN_FLAGS = (
+    "USE_RELAXED_HOLDS",
+    "USE_ONSET_LATENCY_COMPENSATION",
+    "USE_CONSTANT_TEMPO",
     "USE_DRUM_BACKBONE_SHARE",
     "USE_RUN_CAP",
     "USE_RELATIVE_NOTE_TYPE",
     "USE_HPSS",
-    "USE_ONSET_BACKTRACK",
     "USE_ADAPTIVE_GRID",
     "USE_STRUCTURE_GUIDANCE",
     "DETECT_FINISHES",
@@ -280,9 +313,29 @@ USE_HPSS = False
 #: Force de la separation HPSS. Plus haut = separation plus franche.
 HPSS_MARGIN = 3.0
 
-#: Recale l'onset detecte (pic du flux spectral) sur le minimum d'energie qui
-#: le precede, c'est-a-dire sur l'attaque reelle plutot que sur son sommet.
+#: Recale l'onset detecte sur le minimum d'energie qui le precede.
+#:
+#: RETIRE de NEW_GEN_FLAGS apres mesure : compare aux notes de la beatmap
+#: humaine de Haruka Kanata, l'activer fait tomber la concordance de 87 % a
+#: 54 %. Il sur-corrige, en reculant l'onset avant l'attaque perçue. Le drapeau
+#: reste pour pouvoir le re-tester.
 USE_ONSET_BACKTRACK = False
+
+#: Retranche ONSET_LATENCY_MS aux instants detectes.
+USE_ONSET_LATENCY_COMPENSATION = False
+
+#: Compensation de la latence de detection, en millisecondes, retranchee aux
+#: instants detectes.
+#:
+#: Le flux spectral atteint son pic APRES le debut de l'attaque : la fenetre
+#: d'analyse fait 2048 echantillons (~93 ms a 22050 Hz) et le pic tombe une a
+#: deux trames plus loin. Mesure contre la beatmap humaine de Haruka Kanata :
+#: nos notes arrivent ~65 ms trop tard, et corriger ce decalage porte la
+#: concordance de 26 % a 87 %.
+#:
+#: Calibre sur UN morceau : la valeur est une hypothese fondee sur un mecanisme
+#: reel, pas une loi. A revalider sur d'autres maps de reference.
+ONSET_LATENCY_MS = 65
 
 #: Utilise une grille a subdivision adaptive (2/3/4/6/8/12) au lieu de fixe 2/4.
 #: Detecte la densite locale d'onsets par temps et choisit la subdivision.
