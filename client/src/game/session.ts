@@ -20,6 +20,7 @@ import {
   musicVolume,
   noteTypeForKey,
   type Judgement,
+  type NoteType,
 } from '../config/gameplay';
 
 export type SessionStatus = 'idle' | 'countdown' | 'playing' | 'dead' | 'survived';
@@ -127,10 +128,16 @@ export class GameSession {
 
   /** Un appui clavier du joueur. */
   handleKey(key: string): void {
-    if (this.status !== 'playing') return;
-
     const type = noteTypeForKey(key);
-    if (!type) return;
+    if (type) this.handleNote(type);
+  }
+
+  /**
+   * Le joueur frappe une note d'un type donné, quelle qu'en soit la source :
+   * clavier au bureau, bouton tactile sur mobile.
+   */
+  handleNote(type: NoteType): void {
+    if (this.status !== 'playing') return;
 
     const result = this.judge.hit(this.clock.getInputTimeMs(), type);
     if (!result) return;

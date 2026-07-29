@@ -35,8 +35,15 @@ export class HighwayRenderer {
   /** Instant du dernier appui réussi, qui pilote la dilatation du cercle. */
   private lastHitAtMs = Number.NEGATIVE_INFINITY;
 
+  /**
+   * Hauteur de la piste, en fraction de l'écran. Surchargeable : sur mobile,
+   * la piste remonte pour laisser le bas aux boutons et aux pouces.
+   */
+  private laneYRatio: number = HIGHWAY.LANE_Y_RATIO;
+
   /** Prépare le canvas et l'attache au DOM. */
-  async init(container: HTMLElement): Promise<void> {
+  async init(container: HTMLElement, laneYRatio?: number): Promise<void> {
+    if (laneYRatio !== undefined) this.laneYRatio = laneYRatio;
     await this.app.init({
       background: HIGHWAY_COLORS.BACKGROUND,
       resizeTo: container,
@@ -68,7 +75,7 @@ export class HighwayRenderer {
 
   /** Ordonnée du centre de la lane, en pixels. */
   get laneY(): number {
-    return this.height * HIGHWAY.LANE_Y_RATIO;
+    return this.height * this.laneYRatio;
   }
 
   /** Décor statique : la bande de jeu, et le cercle de jugement animé. */

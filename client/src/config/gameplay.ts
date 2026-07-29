@@ -143,6 +143,20 @@ export function missedNoteLingerMs(): number {
   );
 }
 
+/**
+ * Adaptations tactiles. Sur mobile, le joueur n'a que deux pouces : les quatre
+ * touches deviennent deux gros boutons, un par type de note.
+ */
+export const TOUCH = {
+  /**
+   * La piste remonte pour libérer le bas de l'écran, où se trouvent les
+   * boutons — et où se trouvent les pouces.
+   */
+  LANE_Y_RATIO: 0.42,
+  /** Hauteur de la zone de boutons, en fraction de la hauteur de l'écran. */
+  CONTROLS_HEIGHT_RATIO: 0.34,
+} as const;
+
 /** Retour visuel : pulsations lumineuses à chaque appui. */
 export const FEEDBACK = {
   /** Durée d'une pulsation, en millisecondes. */

@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { HighwayRenderer } from '../render/highway';
 import { GameSession, type SessionSnapshot } from '../game/session';
-import { HIGHWAY, SURVIVAL } from '../config/gameplay';
+import { HIGHWAY, SURVIVAL, TOUCH, type NoteType } from '../config/gameplay';
 import { readCalibrationOffsetMs } from '../game/calibration';
 import type { Chart } from '../chart/types';
 import { Hud } from './Hud';
 import { KeyLegend } from './KeyLegend';
+import { TouchControls } from './TouchControls';
+import { useTouchDevice } from './useTouchDevice';
 
 interface GameScreenProps {
   chart: Chart;
@@ -17,6 +19,13 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
   const canvasHost = useRef<HTMLDivElement>(null);
   const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isTouch = useTouchDevice();
+  const laneYRatio = isTouch ? TOUCH.LANE_Y_RATIO : HIGHWAY.LANE_Y_RATIO;
+
+  // Les boutons tactiles passent par la session sans passer par un faux
+  // événement clavier : la source de l'appui ne regarde pas le gameplay.
+  const sessionRef = useRef<GameSession | null>(null);
+  const hit = useCallback((type: NoteType) => sessionRef.current?.handleNote(type), []);
 
   // Passer par une ref évite que l'effet ne dépende de l'identité du callback :
   // sans ça, un simple re-rendu du parent relancerait la partie depuis le début.
@@ -40,7 +49,7 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
     void (async () => {
       try {
         const created = new HighwayRenderer();
-        await created.init(host);
+        await created.init(host, laneYRatio);
         // React StrictMode démonte puis remonte systématiquement les composants
         // en développement : l'initialisation de Pixi peut donc se terminer
         // alors que l'écran n'existe plus. Sans ce garde, un second canvas
@@ -64,6 +73,7 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
           },
         });
 
+        sessionRef.current = session;
         window.addEventListener('keydown', onKeyDown);
         await session.start();
       } catch (cause) {
@@ -75,23 +85,31 @@ export function GameScreen({ chart, onFinished, onQuit }: GameScreenProps) {
       cancelled = true;
       window.removeEventListener('keydown', onKeyDown);
       session?.stop();
+      sessionRef.current = null;
       renderer?.destroy();
     };
-  }, [chart]);
+  }, [chart, laneYRatio]);
 
   // Hauteur du bord supérieur de la piste, mesurée depuis le bas de l'écran :
   // la légende s'y accroche pour ne jamais recouvrir les notes, quelle que soit
   // la taille de la fenêtre.
-  const laneTopFromBottom = `${(1 - HIGHWAY.LANE_Y_RATIO + HIGHWAY.LANE_HEIGHT_RATIO / 2) * 100}%`;
+  const laneTopFromBottom = `${(1 - laneYRatio + HIGHWAY.LANE_HEIGHT_RATIO / 2) * 100}%`;
 
   return (
     <main
       className="screen screen--game"
-      style={{ '--lane-top-from-bottom': laneTopFromBottom } as CSSProperties}
+      style={
+        {
+          '--lane-top-from-bottom': laneTopFromBottom,
+          '--touch-controls-height': `${TOUCH.CONTROLS_HEIGHT_RATIO * 100}%`,
+        } as CSSProperties
+      }
     >
       <div className="canvas-host" ref={canvasHost} />
 
-      <KeyLegend variant="floating" />
+      {/* Au clavier, un rappel discret ; au doigt, les boutons sont eux-mêmes
+          le rappel — inutile de dupliquer. */}
+      {isTouch ? <TouchControls onHit={hit} /> : <KeyLegend variant="floating" />}
 
       {snapshot && snapshot.status !== 'countdown' && (
         <Hud

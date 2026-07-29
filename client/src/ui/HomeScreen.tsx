@@ -41,7 +41,10 @@ export function HomeScreen({ library, onPlay }: HomeScreenProps) {
       </section>
 
       <section className="panel">
-        <h2 className="panel__title">Bibliothèque</h2>
+        <h2 className="panel__title">
+          Bibliothèque
+          <span className="panel__count">{library.length}</span>
+        </h2>
         <ul className="library">
           {library.map((chart) => (
             <li key={chart.title}>

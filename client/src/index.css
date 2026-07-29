@@ -150,12 +150,37 @@ body {
   color: var(--color-orange);
 }
 
+/*
+ * Hauteur bornée : la bibliothèque grandit à chaque morceau généré, et sans
+ * plafond elle repousserait le reste de la page hors de l'écran.
+ */
 .library {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0.25rem;
   display: grid;
   gap: 0.5rem;
+  max-height: 15rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--color-purple) transparent;
+}
+
+.library::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.library::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-purple) 80%, transparent);
+}
+
+.panel__count {
+  float: right;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-purple) 45%, transparent);
+  letter-spacing: 0;
 }
 
 .library__meta {
@@ -403,6 +428,83 @@ body {
   display: grid;
   place-items: center;
   background: color-mix(in srgb, var(--color-night) 85%, transparent);
+}
+
+/* --- Commandes tactiles --- */
+
+.touch-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--touch-controls-height);
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  /* Marge basse des téléphones à encoche ou barre de navigation. */
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.touch-controls__button {
+  flex: 1;
+  border: 3px solid color-mix(in srgb, var(--color-white) 85%, transparent);
+  border-radius: 1.25rem;
+  color: var(--color-night);
+  font: inherit;
+  font-weight: 900;
+  font-size: clamp(1.5rem, 7vw, 2.5rem);
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 0.5rem color-mix(in srgb, var(--color-white) 70%, transparent);
+  box-shadow:
+    0 0 1rem color-mix(in srgb, var(--color-white) 30%, transparent),
+    0 0 2.5rem color-mix(in srgb, var(--color-purple) 70%, transparent);
+  /* Le navigateur ne doit ni sélectionner, ni zoomer, ni retarder l'appui. */
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  transition: transform 60ms ease;
+}
+
+.touch-controls__button:active {
+  transform: scale(0.96);
+  filter: brightness(1.25);
+}
+
+/* --- Adaptations petits écrans --- */
+
+@media (max-width: 40rem) {
+  .screen {
+    padding: 1.25rem;
+    gap: 1rem;
+  }
+
+  .panel {
+    padding: 1rem;
+  }
+
+  .library {
+    max-height: 11rem;
+  }
+
+  .hud {
+    top: 0.75rem;
+    left: 0.75rem;
+    right: 0.75rem;
+  }
+
+  .hud__score {
+    font-size: 1.5rem;
+  }
+
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .key-legend {
+    --disc-size: 3rem;
+  }
 }
 
 .stats {
