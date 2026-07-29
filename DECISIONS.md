@@ -128,6 +128,10 @@ Deux fonctionnalités restent inopérantes : les **finishes** ne produisent aucu
 
 À retenir sur la méthode : le rapport d'analyse à l'origine de ces travaux annonçait 612 notes et 85 % de DON pour la partition générée, là où le fichier du dépôt en contient 144 avec un ratio 55/45 — déjà conforme à la référence osu! citée. **Seul le diagnostic des longues séries s'est vérifié.** D'où la règle : mesurer sur le fichier réel avant de calibrer un correctif, et vérifier qu'une étape coûteuse coûte effectivement du temps.
 
+## Battement avant l'écran de résultats (29 juil. 2026)
+
+Le passage à l'écran de fin était instantané : dès la dernière note jugée ou l'échec, coupure nette vers `ResultScreen`. Un nouveau statut `ending` s'intercale entre `playing` et `dead`/`survived` : le résultat est acquis, les entrées sont ignorées, mais le rendu continue de tourner pendant `RESULTS_TRANSITION.DELAY_MS` (3,5 s) — la dernière pulsation a le temps de s'éteindre au lieu de se figer. La musique entame un fondu dès le début du battement (`FADE_OUT_MS`, 1,8 s), pour que le silence soit déjà installé à l'affichage des résultats plutôt qu'une coupure audio brutale.
+
 ## Hybride Guitar Hero / taiko : deux lanes et notes tenues (29 juil. 2026)
 
 Refonte du format de jeu, validée sur trois choix :

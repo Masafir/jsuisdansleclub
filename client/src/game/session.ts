@@ -18,6 +18,7 @@ import {
   COUNTDOWN,
   HIGHWAY,
   NOTE_TYPES,
+  RESULTS_TRANSITION,
   missedNoteLingerMs,
   musicVolume,
   noteTypeForKey,
@@ -25,7 +26,20 @@ import {
   type NoteType,
 } from '../config/gameplay';
 
-export type SessionStatus = 'idle' | 'countdown' | 'playing' | 'dead' | 'survived';
+/**
+ * `ending` : la partie est jouée (gagnée ou perdue) mais l'écran de résultats
+ * n'est pas encore montré — le temps du battement de `RESULTS_TRANSITION`.
+ * Les entrées du joueur sont ignorées (elles ne testent que `=== 'playing'`),
+ * le rendu continue de tourner pour que la dernière pulsation ait le temps de
+ * s'éteindre au lieu de se figer.
+ */
+export type SessionStatus =
+  | 'idle'
+  | 'countdown'
+  | 'playing'
+  | 'ending'
+  | 'dead'
+  | 'survived';
 
 export interface SessionSnapshot {
   status: SessionStatus;
@@ -65,8 +79,13 @@ export class GameSession {
   private readonly sfx = new SfxPlayer();
 
   private source: AudioBufferSourceNode | null = null;
+  private musicGain: GainNode | null = null;
   private frameHandle: number | null = null;
   private status: SessionStatus = 'idle';
+  /** Instant (temps morceau) où le battement de fin a commencé. */
+  private endingStartedAtMs = 0;
+  /** Résultat final, connu dès le début du battement mais annoncé après lui. */
+  private endingResult: 'dead' | 'survived' | null = null;
   private lastJudgement: Judgement | null = null;
   /**
    * Notes ratées encore à l'écran. Elles ont quitté le champ du Judge (le
@@ -121,11 +140,11 @@ export class GameSession {
     this.source.buffer = buffer;
 
     // Le morceau passe par un GainNode plutôt que d'attaquer la sortie en
-    // direct : c'est ce qui rend son volume réglable, et plus tard automatisable
-    // (fondu à la mort du joueur, atténuation pendant un taunt…).
-    const musicGain = ctx.createGain();
-    musicGain.gain.value = musicVolume();
-    this.source.connect(musicGain).connect(ctx.destination);
+    // direct : c'est ce qui rend son volume réglable, et l'automatise au
+    // battement de fin (fondu, voir beginEnding).
+    this.musicGain = ctx.createGain();
+    this.musicGain.gain.value = musicVolume();
+    this.source.connect(this.musicGain).connect(ctx.destination);
 
     this.source.start(startAtSec);
 
@@ -228,10 +247,15 @@ export class GameSession {
         this.holds.activeHolds.length === 0;
 
       if (isPlayerDead(this.tracker, songTimeMs, this.chart.durationMs)) {
-        this.finish('dead');
+        this.beginEnding('dead', songTimeMs);
       } else if (songTimeMs >= this.chart.durationMs || chartDone) {
-        this.finish('survived');
+        this.beginEnding('survived', songTimeMs);
       }
+    } else if (
+      this.status === 'ending' &&
+      songTimeMs - this.endingStartedAtMs >= RESULTS_TRANSITION.DELAY_MS
+    ) {
+      this.finish();
     }
 
     // Oublier les notes ratées une fois sorties de l'écran, sinon elles
@@ -255,8 +279,37 @@ export class GameSession {
     this.emit(songTimeMs);
   };
 
-  private finish(status: 'dead' | 'survived'): void {
-    this.status = status;
+  /**
+   * La partie vient de se décider (gagnée ou perdue), mais l'écran de
+   * résultats attend `RESULTS_TRANSITION.DELAY_MS` avant de s'afficher — le
+   * temps que la dernière pulsation s'éteigne à l'écran plutôt que de couper
+   * net. Le résultat est déjà acquis, `this.status` reste `'ending'` jusque-là
+   * (voir la boucle), ce qui bloque à la fois les entrées et une nouvelle
+   * détection de fin de partie.
+   */
+  private beginEnding(result: 'dead' | 'survived', songTimeMs: number): void {
+    this.status = 'ending';
+    this.endingResult = result;
+    this.endingStartedAtMs = songTimeMs;
+
+    // Le fondu commence tout de suite, pour que le silence soit déjà installé
+    // à l'affichage des résultats plutôt qu'une coupure nette au dernier instant.
+    if (this.musicGain) {
+      const ctx = getAudioContext();
+      const now = ctx.currentTime;
+      this.musicGain.gain.cancelScheduledValues(now);
+      this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, now);
+      this.musicGain.gain.linearRampToValueAtTime(
+        0,
+        now + RESULTS_TRANSITION.FADE_OUT_MS / 1000,
+      );
+    }
+  }
+
+  /** Le battement de fin est écoulé : on bascule vers l'écran de résultats. */
+  private finish(): void {
+    if (!this.endingResult) return;
+    this.status = this.endingResult;
     this.source?.stop();
     this.source = null;
     if (this.frameHandle !== null) {
@@ -276,7 +329,9 @@ export class GameSession {
       // Déjà arrêtée : rien à faire.
     }
     this.source = null;
+    this.musicGain = null;
     this.status = 'idle';
+    this.endingResult = null;
     this.missedNotes = [];
     this.deltaSumMs = 0;
     this.deltaCount = 0;

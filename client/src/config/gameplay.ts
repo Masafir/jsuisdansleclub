@@ -269,6 +269,25 @@ export const COUNTDOWN = {
   SCHEDULE_LEAD_MS: 200,
 } as const;
 
+/**
+ * Transition entre la fin de la partie (dernière note jugée, ou échec) et
+ * l'affichage de l'écran de résultats.
+ *
+ * Un basculement instantané est désagréable : le joueur n'a pas le temps de
+ * réaliser ce qui vient de se passer. Un temps de battement, musique en fondu,
+ * laisse la dernière note/pulsation se jouer avant de couper à l'écran de fin.
+ */
+export const RESULTS_TRANSITION = {
+  /** Délai entre la fin de la partie et l'affichage de l'écran de résultats. */
+  DELAY_MS: 3500,
+  /**
+   * Durée du fondu musical, en millisecondes. Doit être <= DELAY_MS : le fondu
+   * commence dès la fin de partie, pour que le silence soit déjà installé
+   * quand l'écran de résultats apparaît.
+   */
+  FADE_OUT_MS: 1800,
+} as const;
+
 /** Calibration de la latence de sortie audio (casques Bluetooth, etc.). */
 export const CALIBRATION = {
   /** Offset par défaut, en millisecondes, tant que le joueur n'a pas calibré. */
