@@ -53,6 +53,35 @@ Fenêtres de jugement : ±40 ms `PERFECT`, ±90 ms `GOOD`, au-delà `MISS`.
 - **La partition de test est du code, pas un JSON** (`client/src/chart/testChart.ts`) : elle génère les notes procéduralement. Le format JSON n'apparaîtra qu'avec le pipeline, quand il faudra transporter des partitions générées.
 - **Un prototype d'estimation de tempo est conservé** dans `pipeline/prototype/` : sans dépendance (ffmpeg seul), il donne BPM et offset d'un morceau. Il ne remplace pas librosa — il travaille sur l'énergie totale, pas sur le flux spectral — mais il documente la méthode et dépanne pour caler une partition à la main.
 
+## Générateur expérimental `--new-gen` (29 juil. 2026)
+
+Une seconde piste de génération, **isolée derrière un drapeau CLI**, pour tester des techniques plus fines sans toucher à la génération en service. Issue d'une analyse comparative avec une beatmap osu! taiko de *Haruka Kanata*.
+
+**Principe d'isolation, non négociable** : toutes les constantes `--new-gen` valent `False` par défaut, et c'est la CLI qui les lève. Un défaut à `True` suffit à modifier le mode legacy dès qu'un appel oublie de vérifier le mode — c'est exactement ce qui s'est produit avec HPSS, appliqué inconditionnellement, qui divisait par deux le nombre de notes de l'ancienne génération. Critère de non-régression : `--legacy` doit produire un fichier **bit-à-bit identique** à l'existant (vérifié sur Haruka Kanata).
+
+Techniques ajoutées, toutes sous drapeau :
+- **HPSS** (`USE_HPSS`) : sépare harmonique et percussif, pour que la guitare et les synthés ne produisent plus d'onsets.
+- **Backtracking d'onsets** (`USE_ONSET_BACKTRACK`) : recale le pic du flux spectral sur le minimum d'énergie qui le précède, c'est-à-dire sur l'attaque réelle plutôt que sur son sommet.
+- **Grille adaptative** (`USE_ADAPTIVE_GRID`) : subdivisions 2/3/4/6/8/12 choisies localement selon la densité d'onsets, au lieu du couple fixe croches/doubles. Permet les triolets et les roulements.
+- **Segmentation structurelle** (`USE_STRUCTURE_GUIDANCE`) : MFCC + clustering agglomératif → couplet/refrain/pont, qui oriente le choix du lead.
+- **Forçage KA sur caisse claire** (`SNARE_KA_BOOST`, `SNARE_BEAT_TOLERANCE_S`) : les temps 2 et 4 portant une attaque médium deviennent des KA.
+- **Finishes** (`DETECT_FINISHES`) : grosses notes sur crêtes spectrales larges (cymbales, crashes).
+
+**Résultats mesurés sur Haruka Kanata** (90 s, 172 BPM) :
+
+| | legacy | `--new-gen` |
+|---|---|---|
+| Notes | 144 (1,60/s) | 138 (1,53/s) |
+| Ratio DON/KA | 55 / 45 | **25 / 75** |
+| Plus long run de même type | **37** | **14** |
+| Répartition du lead | drums 16 · bass 9 · vocals 6 · other 1 | **drums 30 · vocals 2** |
+
+Verdict : le nouveau générateur **corrige le vrai défaut** — les longues séries d'une même couleur passent de 37 à 14 — mais **régresse sur deux axes** : le ratio DON/KA bascule dans l'excès inverse, et la diversité du lead s'effondre. Les deux causes sont identifiées et paramétrables :
+- `SNARE_BEAT_TOLERANCE_S = 0.15` s couvre presque la moitié de chaque temps à 172 BPM : ce n'est plus une détection de caisse claire mais un forçage du contretemps. Piste : descendre vers 0,05 s.
+- `STRUCTURE_LEAD_BOOST = 1.5` fige le lead sur la batterie, puisque la majorité des sections sont étiquetées couplet/intro/outro qui la préfèrent toutes. Piste : baisser le boost, ou diversifier `SECTION_LEAD_PREFERENCE`.
+
+À retenir sur la méthode : le rapport d'analyse à l'origine de ces travaux annonçait 612 notes et 85 % de DON pour la partition générée, là où le fichier du dépôt en contient 144 avec un ratio 55/45 — déjà conforme à la référence osu! citée. **Seul le diagnostic des longues séries s'est vérifié.** D'où la règle : mesurer sur le fichier réel avant de calibrer un correctif.
+
 ## Hybride Guitar Hero / taiko : deux lanes et notes tenues (29 juil. 2026)
 
 Refonte du format de jeu, validée sur trois choix :

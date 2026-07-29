@@ -109,6 +109,8 @@ def merge_bands(
     band_times: dict[str, list[float]],
     band_strengths: dict[str, list[float]],
     min_gap_s: float,
+    beats: list[float] | None = None,
+    use_new_gen: bool = False,
 ) -> tuple[list[float], list[NoteType]]:
     """Fusionne les detections par bande en une seule suite de notes typees.
 
@@ -144,6 +146,18 @@ def merge_bands(
             for time_s, strength in zip(times, strengths)
         )
 
+    # Detection snare (MID band reguliere sur beats 2/4) pour nouveau generateur
+    is_snare_beat: set[float] = set()
+    if use_new_gen and beats and len(beats) >= 4:
+        mid_times = band_times.get("MID", [])
+        if mid_times:
+            for beat_idx, beat in enumerate(beats[:-1]):
+                # beats 2 et 4 d'une mesure 4/4 (index 1 et 3 dans le groupe de 4)
+                if beat_idx % 4 in (1, 3):
+                    nearest = min(mid_times, key=lambda t: abs(t - beat))
+                    if abs(nearest - beat) < config.SNARE_BEAT_TOLERANCE_S:
+                        is_snare_beat.add(beat)
+
     # Du plus fort au plus faible : chaque note rejetee l'est au profit d'une
     # plus intense, jamais l'inverse.
     entries.sort(key=lambda entry: (-entry[1], entry[2], entry[0]))
@@ -151,6 +165,11 @@ def merge_bands(
     kept: list[tuple[float, NoteType]] = []
     for time_s, _strength, _priority, note_type in entries:
         if all(abs(time_s - other) >= min_gap_s for other, _ in kept):
+            # Sur nouveau gen : snare sur beats 2/4 force KA
+            if use_new_gen and any(
+                abs(time_s - b) < config.SNARE_BEAT_TOLERANCE_S for b in is_snare_beat
+            ):
+                note_type = "KA" if note_type == "DON" else note_type
             kept.append((time_s, note_type))
 
     kept.sort(key=lambda pair: pair[0])
@@ -208,6 +227,7 @@ def classify_note_type(
     low_energy: float,
     high_energy: float,
     ka_ratio: float = config.KA_ENERGY_RATIO,
+    is_snare_candidate: bool = False,
 ) -> NoteType:
     """Decide si une attaque est un DON (grave) ou un KA (aigu).
 
@@ -230,8 +250,12 @@ def classify_note_type(
     donc pas ecrire la regle sous forme de division `high / low`, qui leverait
     une ZeroDivisionError — la forme multipliee ci-dessus n'a pas ce probleme.
 
+    Si `is_snare_candidate` est True, retourne "KA" (caisse claire = bord de peau).
+
     Tests : `test_notes.py::TestClassifyNoteType`
     """
+    if is_snare_candidate:
+        return "KA"
     if high_energy > low_energy * ka_ratio:
         return "KA"
     else:

@@ -32,6 +32,53 @@ Le cœur de détection (`onset_envelope`, `detect_onset_times`,
 (`phrases.py`, `stems.py`) et l'orchestration ont été écrites par l'agent, à la
 demande d'amiral.
 
+## Générateur expérimental `--new-gen`
+
+Une seconde piste de génération, isolée derrière un drapeau, pour tester sans
+toucher à celle en service :
+
+```bash
+cd pipeline && .venv/bin/python -m chartgen "../client/public/audio/mon morceau.mp3" --new-gen
+```
+
+Le fichier produit porte le suffixe `-newgen`, donc les deux versions
+**coexistent dans la bibliothèque** et se comparent en jouant.
+
+Ce qu'il active (tout est à `False` par défaut dans `config.py`, seule la CLI
+les lève) : **HPSS** avant la détection d'onsets, **backtracking** vers
+l'attaque réelle, **grille adaptative** (2/3/4/6/8/12 selon la densité locale,
+donc triolets et roulements possibles), **segmentation structurelle**
+couplet/refrain/pont pour orienter le lead, **forçage KA** sur les caisses
+claires des temps 2 et 4, et détection de **finishes**.
+
+### État actuel : à régler avant adoption
+
+Mesuré sur Haruka Kanata (90 s, 172 BPM) :
+
+| | legacy | `--new-gen` |
+|---|---|---|
+| Notes | 144 (1,60/s) | 138 (1,53/s) |
+| Ratio DON/KA | 55 / 45 | 25 / 75 |
+| Plus long run de même type | 37 | 14 |
+| Répartition du lead | drums 16 · bass 9 · vocals 6 | drums 30 · vocals 2 |
+
+Le gain réel est sur les **longues séries d'une même couleur** (37 → 14). En
+revanche deux réglages sur-corrigent :
+
+- `SNARE_BEAT_TOLERANCE_S` (0,15 s) couvre presque la moitié d'un temps à
+  172 BPM — ce n'est plus une détection de caisse claire mais un forçage du
+  contretemps, d'où les 75 % de KA. Essayer 0,05 s.
+- `STRUCTURE_LEAD_BOOST` (1,5) fige le lead sur la batterie, car couplet, intro
+  et outro la préfèrent toutes dans `SECTION_LEAD_PREFERENCE`.
+
+### Règle d'isolation
+
+Toute constante `--new-gen` doit valoir `False` par défaut. Un défaut à `True`
+modifie la génération en service dès qu'un appel oublie de tester le mode : le
+premier jet appliquait HPSS inconditionnellement et divisait par deux le nombre
+de notes du mode legacy. Le test de non-régression est simple — regénérer sans
+drapeau doit rendre un fichier identique à l'existant.
+
 ## Analyse par pistes séparées (le mode principal)
 
 Le pipeline sépare le morceau en quatre pistes via **demucs** — batterie,

@@ -14,7 +14,6 @@ Vocabulaire utile avant de lire le code :
 """
 
 from __future__ import annotations
-from os import times
 
 import librosa
 import numpy as np
@@ -59,9 +58,17 @@ def onset_envelope(samples: np.ndarray, sample_rate: int) -> np.ndarray:
     verifie que sur un signal fait de clics espaces, l'enveloppe presente bien
     un pic a chaque clic.
     """
-    envelope = librosa.onset.onset_strength(y=samples, sr=sample_rate, hop_length=config.HOP_LENGTH)
-    print(envelope.shape, envelope.max(), envelope.mean())
-    return envelope
+    # HPSS : isole la partie percussive pour que la guitare et les synthes ne
+    # produisent plus d'onsets. Sous drapeau : applique inconditionnellement,
+    # il changeait aussi l'ancienne generation (mesure sur Haruka Kanata : la
+    # moitie des notes en moins).
+    source = samples
+    if config.USE_HPSS:
+        _, source = librosa.effects.hpss(samples, margin=config.HPSS_MARGIN)
+
+    return librosa.onset.onset_strength(
+        y=source, sr=sample_rate, hop_length=config.HOP_LENGTH
+    )
 
 
 def detect_onset_times(
@@ -69,6 +76,7 @@ def detect_onset_times(
     sample_rate: int,
     sensitivity: float = config.ONSET_SENSITIVITY,
     min_gap_s: float = config.ONSET_MIN_GAP_S,
+    samples: np.ndarray | None = None,
 ) -> list[float]:
     """Choisit les pics de l'enveloppe qui comptent vraiment comme des attaques.
 
@@ -95,8 +103,8 @@ def detect_onset_times(
        n'ont pas de voisine des deux cotes.
 
     3. Convertir les indices de trames en secondes. Deux options :
-           librosa.frames_to_time(indices, sr=sample_rate,
-                                  hop_length=config.HOP_LENGTH)
+            librosa.frames_to_time(indices, sr=sample_rate,
+                                   hop_length=config.HOP_LENGTH)
        ou, a la main : indice * config.HOP_LENGTH / sample_rate
 
     4. Espacer : appliquer `enforce_min_gap` (dans notes.py) avec min_gap_s,
@@ -107,15 +115,30 @@ def detect_onset_times(
 
     Tests : `test_analysis.py::TestDetectOnsetTimes`
     """
-    seuil = envelope.mean() + sensitivity * envelope.std()
-    frames = []
-    for i in range(1, len(envelope) - 1):
-        if envelope[i] > seuil and envelope[i] > envelope[i - 1] and envelope[i] > envelope[i + 1]:
-            # C'est un pic au-dessus du seuil
-            new_time = librosa.frames_to_time(i, sr=sample_rate, hop_length=config.HOP_LENGTH)
-            frames.append(new_time)
+    # Si backtrack actif et samples fourni, utilise librosa.onset_detect
+    if config.USE_ONSET_BACKTRACK and samples is not None:
+        rms_envelope = librosa.feature.rms(y=samples, hop_length=config.HOP_LENGTH)[0]
+        onset_frames = librosa.onset.onset_detect(
+            onset_envelope=envelope,
+            sr=sample_rate,
+            hop_length=config.HOP_LENGTH,
+            backtrack=True,
+            energy=rms_envelope,
+            units='frames'
+        )
+        times = librosa.frames_to_time(onset_frames, sr=sample_rate, hop_length=config.HOP_LENGTH)
+        times_list = list(times)
+    else:
+        # Peak picking manuel (code original)
+        seuil = envelope.mean() + sensitivity * envelope.std()
+        frames = []
+        for i in range(1, len(envelope) - 1):
+            if envelope[i] > seuil and envelope[i] > envelope[i - 1] and envelope[i] > envelope[i + 1]:
+                new_time = librosa.frames_to_time(i, sr=sample_rate, hop_length=config.HOP_LENGTH)
+                frames.append(new_time)
+        times_list = frames
 
-    return enforce_min_gap(frames, min_gap_s)
+    return enforce_min_gap(times_list, min_gap_s)
 
 def mel_bin_boundaries(n_mels: int, sample_rate: int) -> list[int]:
     """Frontieres de config.BANDS traduites en indices de bandes mel.
@@ -343,6 +366,58 @@ def variable_grid(
     return grid
 
 
+def adaptive_grid(
+    beats: list[float],
+    onset_times: list[float],
+    window_beats: int = config.ADAPTIVE_GRID_WINDOW_BEATS,
+    density_ratio: float = config.ADAPTIVE_GRID_DENSITY_RATIO,
+) -> list[float]:
+    """Grille a subdivision adaptive : choisit 2/3/4/6/8/12 selon densite locale d'onsets.
+
+    Pour chaque intervalle entre deux temps consecutifs, compte le nombre d'onsets
+    et compare a la mediane locale. Si densite > mediane * ratio, monte en subdivision.
+    """
+    if len(beats) < 2:
+        return list(beats)
+    
+    candidates = config.SUBDIVISION_CANDIDATES
+    grid: list[float] = []
+    
+    # Pre-calcule densite par temps
+    onset_counts = []
+    for start, end in zip(beats[:-1], beats[1:]):
+        count = sum(1 for t in onset_times if start <= t < end)
+        onset_counts.append(count)
+    
+    # Mediane glissante sur window_beats
+    half = max(1, window_beats // 2)
+    
+    for index, (start, end) in enumerate(zip(beats[:-1], beats[1:])):
+        # Mediane locale
+        lo = max(0, index - half)
+        hi = min(len(onset_counts), index + half + 1)
+        local_median = np.median(onset_counts[lo:hi]) if hi > lo else 0
+        
+        count = onset_counts[index]
+        beat_dur = end - start
+        density = count / beat_dur if beat_dur > 0 else 0
+        
+        # Choisit subdivision selon densite relative
+        if local_median > 0 and density > local_median * density_ratio:
+            # Monte en subdivision (prochain candidat superieur a base=2)
+            base_idx = candidates.index(config.BEAT_SUBDIVISIONS) if config.BEAT_SUBDIVISIONS in candidates else 0
+            sub_idx = min(base_idx + 1, len(candidates) - 1)
+            subdivisions = candidates[sub_idx]
+        else:
+            subdivisions = config.BEAT_SUBDIVISIONS
+        
+        step = (end - start) / subdivisions
+        grid.extend(start + i * step for i in range(subdivisions))
+    
+    grid.append(beats[-1])
+    return grid
+
+
 def grid_tolerance_s(
     grid: list[float], ratio: float = config.QUANTIZE_TOLERANCE_RATIO
 ) -> float:
@@ -488,3 +563,48 @@ def band_energies(
 
     column = spectrum[:, frame]
     return float(column[is_low].sum()), float(column[~is_low].sum())
+
+
+def detect_finishes(
+    samples: np.ndarray,
+    sample_rate: int,
+    grid: list[float],
+    energy_percentile: float = 95.0,
+    min_gap_ms: float = 500.0,
+) -> list[tuple[float, str]]:
+    """Detecte les finishes (grosses notes) : crêtes spectrales larges (cymbales/crashes).
+
+    Retourne liste de (time_s, note_type) pour les finishes detectees.
+    """
+    if not grid or len(grid) < 2:
+        return []
+    
+    # Spectral centroid et energy sur toute la duree
+    centroid = librosa.feature.spectral_centroid(
+        y=samples, sr=sample_rate, hop_length=config.HOP_LENGTH
+    )[0]
+    rms = librosa.feature.rms(y=samples, hop_length=config.HOP_LENGTH)[0]
+    times = librosa.times_like(centroid, sr=sample_rate, hop_length=config.HOP_LENGTH)
+    
+    # Seuils basés sur percentiles
+    centroid_thresh = np.percentile(centroid, energy_percentile)
+    energy_thresh = np.percentile(rms, energy_percentile)
+    
+    finishes = []
+    last_finish_time = -min_gap_ms / 1000.0
+    
+    for g in grid:
+        idx = np.argmin(np.abs(times - g))
+        if idx >= len(centroid):
+            continue
+            
+        # Crest factor : centroid haut + energy haute = crash/cymbale
+        if centroid[idx] > centroid_thresh and rms[idx] > energy_thresh:
+            if g - last_finish_time >= min_gap_ms / 1000.0:
+                # Type de note : alterne DON/KA selon position dans la mesure
+                # (approximation simple)
+                note_type = "DON" if int(g * 2) % 2 == 0 else "KA"
+                finishes.append((g, note_type))
+                last_finish_time = g
+    
+    return finishes

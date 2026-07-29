@@ -15,6 +15,9 @@ Tout ici est fonction pure : memes entrees, memes sorties, aucun fichier.
 
 from __future__ import annotations
 
+import librosa
+import numpy as np
+
 from . import config
 
 #: Un evenement musical : (instant en secondes, intensite normalisee, type de
@@ -143,22 +146,116 @@ def salience(
     return (event_count / span_s) * (floor + novelty_score)
 
 
+def detect_sections(
+    samples: np.ndarray,
+    sample_rate: int,
+    beats: list[float],
+    n_sections: int = config.STRUCTURE_SECTIONS,
+) -> list[tuple[float, float, str]]:
+    """Decoupe le morceau en sections (verse, chorus, bridge, etc.) par MFCC + agglomerative.
+
+    Retourne une liste de (start_s, end_s, label) pour chaque section detectee.
+    Les labels sont guesses par profil spectral moyen:
+      - bright + high centroid -> "chorus"
+      - lower energy -> "verse"
+      - sparse -> "bridge"
+      - first/last -> "intro" / "outro"
+    """
+    if len(samples) < sample_rate or len(beats) < 4:
+        return [(beats[0], beats[-1], "unknown")]
+
+    hop_length = config.HOP_LENGTH
+    # MFCC comme descripteur de timbre
+    mfcc = librosa.feature.mfcc(y=samples, sr=sample_rate, hop_length=hop_length)
+    # Normaliser chaque coefficient
+    mfcc = (mfcc - mfcc.mean(axis=1, keepdims=True)) / (mfcc.std(axis=1, keepdims=True) + 1e-10)
+
+    # Agglomerative clustering sur les trames temporelles. `agglomerative` ne
+    # prend pas de hop_length : elle rend des indices de trames, qu'on convertit
+    # nous-memes.
+    boundaries_frames = librosa.segment.agglomerative(mfcc, n_sections)
+    frame_times = librosa.frames_to_time(
+        boundaries_frames, sr=sample_rate, hop_length=hop_length
+    )
+
+    # Ajuster les frontieres aux temps les plus proches
+    adjusted = [beats[0]]
+    for t in frame_times[1:-1]:
+        nearest = min(beats, key=lambda b: abs(b - t))
+        if nearest > adjusted[-1]:
+            adjusted.append(nearest)
+    adjusted.append(beats[-1])
+
+    # Caracteriser chaque section pour deviner un label
+    spectrum = np.abs(librosa.stft(samples, hop_length=hop_length))
+    centroid = librosa.feature.spectral_centroid(
+        S=spectrum, sr=sample_rate, hop_length=hop_length
+    )[0]
+    rms = librosa.feature.rms(y=samples, hop_length=hop_length)[0]
+
+    sections: list[tuple[float, float, str]] = []
+    n = len(adjusted)
+
+    for i in range(n - 1):
+        start_s, end_s = adjusted[i], adjusted[i + 1]
+        # Trame MFCC correspondante
+        f_start = int(start_s * sample_rate / hop_length)
+        f_end = int(end_s * sample_rate / hop_length) + 1
+
+        if f_end <= f_start:
+            label = "unknown"
+        else:
+            avg_centroid = float(centroid[f_start:f_end].mean())
+            avg_energy = float(rms[f_start:f_end].mean())
+            centroid_norm = avg_centroid / (sample_rate / 2)
+
+            if i == 0:
+                label = "intro"
+            elif i == n - 2:
+                label = "outro"
+            elif (
+                centroid_norm > config.STRUCTURE_CHORUS_CENTROID
+                and avg_energy > config.STRUCTURE_CHORUS_ENERGY
+            ):
+                label = "chorus"
+            elif avg_energy < config.STRUCTURE_BRIDGE_ENERGY:
+                label = "bridge"
+            else:
+                label = "verse"
+
+        sections.append((start_s, end_s, label))
+
+    return sections
+
+
 def select_lead(
     saliences: dict[str, float],
     previous: str | None,
     hysteresis: float = config.LEAD_HYSTERESIS,
+    section_label: str | None = None,
 ) -> str | None:
     """Choisit la piste que le joueur incarne sur la phrase.
 
     Hysteresis : le lead en place n'est detrone que si un pretendant le depasse
     nettement. L'attention humaine est stable par phrases ; un chart qui zappe
     a chaque mesure est illisible. Renvoie None si tout est silencieux.
+
+    Si `section_label` est fournie et que `USE_STRUCTURE_GUIDANCE` est actif,
+    une preference de section peut surcharger le choix.
     """
     candidates = {stem: value for stem, value in saliences.items() if value > 0}
     if not candidates:
         return None
 
     best = max(candidates, key=lambda stem: candidates[stem])
+
+    # Preference de section si activee
+    if section_label and config.USE_STRUCTURE_GUIDANCE:
+        preferred = config.SECTION_LEAD_PREFERENCE.get(section_label.lower())
+        if preferred and preferred in candidates:
+            candidates[preferred] *= config.STRUCTURE_LEAD_BOOST
+            best = max(candidates, key=lambda stem: candidates[stem])
+
     if previous in candidates and candidates[previous] * hysteresis >= candidates[best]:
         return previous
     return best

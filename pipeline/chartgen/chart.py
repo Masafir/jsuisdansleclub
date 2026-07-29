@@ -108,7 +108,7 @@ def stem_streams(stem_paths: dict[str, Path]) -> dict[str, list[phrases.Event]]:
             envelopes = analysis.onset_envelopes_by_band(samples, sample_rate)
             for band, note_type in (("LOW", "DON"), ("MID", "KA")):
                 envelope = envelopes[band]
-                times = analysis.detect_onset_times(envelope, sample_rate)
+                times = analysis.detect_onset_times(envelope, sample_rate, samples=samples)
                 times = notes.select_strongest(
                     times,
                     analysis.strength_at(envelope, times, sample_rate),
@@ -121,7 +121,7 @@ def stem_streams(stem_paths: dict[str, Path]) -> dict[str, list[phrases.Event]]:
                 ]
         else:
             envelope = analysis.onset_envelope(samples, sample_rate)
-            times = analysis.detect_onset_times(envelope, sample_rate)
+            times = analysis.detect_onset_times(envelope, sample_rate, samples=samples)
             times = notes.select_strongest(
                 times,
                 analysis.strength_at(envelope, times, sample_rate),
@@ -182,7 +182,7 @@ def detect_holds(
         )
 
         envelope = analysis.onset_envelope(samples, sample_rate)
-        onsets = analysis.detect_onset_times(envelope, sample_rate)
+        onsets = analysis.detect_onset_times(envelope, sample_rate, samples=samples)
         segments = notes.filter_hold_segments(
             segments, onsets, config.HOLD_MAX_ONSETS_PER_S, config.HOLD_MAX_DURATION_S
         )
@@ -200,6 +200,7 @@ def notes_from_stems(
     samples,
     sample_rate: int,
     debug: list[str] | None = None,
+    use_new_gen: bool = False,
 ) -> tuple[list[float], list[notes.NoteType], list[float], list[tuple[float, float]]]:
     """Analyse « charter » : pistes separees, attention par nouveaute, budget.
 
@@ -222,7 +223,12 @@ def notes_from_stems(
     all_onsets = sorted(t for events in streams.values() for t, _, _ in events)
     density = analysis.onsets_per_beat(all_onsets, beats)
     accents = analysis.find_accent_beats(density)
-    grid = analysis.variable_grid(beats, accents)
+    
+    # Grille : adaptive si new_gen, sinon variable classique
+    if use_new_gen and config.USE_ADAPTIVE_GRID:
+        grid = analysis.adaptive_grid(beats, all_onsets)
+    else:
+        grid = analysis.variable_grid(beats, accents)
     tolerance = analysis.grid_tolerance_s(grid)
 
     snapped = {
@@ -231,6 +237,13 @@ def notes_from_stems(
         )
         for stem, events in streams.items()
     }
+
+    # Detection de structure musicale pour guider le lead (new_gen only)
+    section_labels = []
+    if use_new_gen and config.USE_STRUCTURE_GUIDANCE:
+        section_labels = phrases.detect_sections(samples, sample_rate, beats)
+        if debug is not None:
+            debug.append(f"sections detectees : {len(section_labels)}")
 
     spans = phrases.phrase_spans(beats)
     intensities = [
@@ -245,7 +258,7 @@ def notes_from_stems(
     lead_counts: Counter[str] = Counter()
     picked: list[phrases.Event] = []
 
-    for (start, end), intensity in zip(spans, intensities):
+    for idx, ((start, end), intensity) in enumerate(zip(spans, intensities)):
         span_s = end - start
         in_span = {
             stem: phrases.events_in_span(events, start, end)
@@ -263,7 +276,20 @@ def notes_from_stems(
             for stem in in_span
         }
 
-        lead = phrases.select_lead(saliences, lead)
+        # Guide le lead selon la section (new_gen)
+        section_label = None
+        if use_new_gen and config.USE_STRUCTURE_GUIDANCE and section_labels:
+            # Trouve la section qui contient le milieu de cette phrase
+            mid = (start + end) / 2
+            for sec_start, sec_end, label in section_labels:
+                if sec_start <= mid < sec_end:
+                    section_label = label
+                    break
+
+        # `section_label` en argument nomme : la signature attend `hysteresis`
+        # en troisieme position, et le passer positionnellement l'ecrasait par
+        # None — ce qui plantait des la premiere phrase.
+        lead = phrases.select_lead(saliences, lead, section_label=section_label)
         budget = phrases.phrase_budget(intensity, median_intensity, span_s)
 
         lead_events = phrases.pick_top(in_span[lead], budget) if lead else []
@@ -330,7 +356,7 @@ def notes_from_stems(
 
 
 def notes_from_bands(
-    samples, sample_rate: int
+    samples, sample_rate: int, use_new_gen: bool = False
 ) -> tuple[list[float], list[notes.NoteType], list[tuple[float, float]]]:
     """Analyse par bandes : chaque registre produit son propre type de note."""
     envelopes = analysis.onset_envelopes_by_band(samples, sample_rate)
@@ -342,24 +368,26 @@ def notes_from_bands(
         if config.BAND_NOTE_TYPE.get(band) is None:
             continue  # bande volontairement ignoree (le charleston, par defaut)
 
-        times = analysis.detect_onset_times(envelope, sample_rate)
+        times = analysis.detect_onset_times(envelope, sample_rate, samples=samples)
         raw_strengths = analysis.strength_at(envelope, times, sample_rate)
         detected[band] = notes.select_strongest(
             times, raw_strengths, config.MIN_NOTE_GAP_S
         )
 
-    # 2. Grille a finesse variable : croches en regime normal, doubles-croches
-    #    la ou la musique s'emballe. C'est ce qui laisse exister les roulements
-    #    sans transformer tout le morceau en soupe.
+    # 2. Grille : adaptive si new_gen, sinon variable classique
     grid: list[float] = []
     tolerance = 0.0
     accent_spans: list[tuple[float, float]] = []
+    beats: list[float] = []
     if config.USE_GRID_QUANTIZATION:
         beats = analysis.beat_times(samples, sample_rate)
         all_onsets = sorted(t for times in detected.values() for t in times)
         density = analysis.onsets_per_beat(all_onsets, beats)
         accents = analysis.find_accent_beats(density)
-        grid = analysis.variable_grid(beats, accents)
+        if use_new_gen and config.USE_ADAPTIVE_GRID:
+            grid = analysis.adaptive_grid(beats, all_onsets)
+        else:
+            grid = analysis.variable_grid(beats, accents)
         tolerance = analysis.grid_tolerance_s(grid)
         accent_spans = [
             (beats[index], beats[index + 1])
@@ -385,7 +413,8 @@ def notes_from_bands(
         )
 
     times, types = notes.merge_bands(
-        band_times, band_strengths, config.MIN_NOTE_GAP_S
+        band_times, band_strengths, config.MIN_NOTE_GAP_S,
+        beats=beats if beats else None, use_new_gen=use_new_gen
     )
     return times, types, accent_spans
 
@@ -398,7 +427,7 @@ def notes_from_full_spectrum(
     Conservee pour comparaison, via config.USE_BAND_ANALYSIS.
     """
     envelope = analysis.onset_envelope(samples, sample_rate)
-    onset_times = analysis.detect_onset_times(envelope, sample_rate)
+    onset_times = analysis.detect_onset_times(envelope, sample_rate, samples=samples)
     playable_times = notes.enforce_min_gap(onset_times, config.MIN_NOTE_GAP_S)
 
     note_types = [
@@ -409,7 +438,11 @@ def notes_from_full_spectrum(
 
 
 def generate_chart(
-    audio_path: str, title: str, audio_url: str, debug: list[str] | None = None
+    audio_path: str,
+    title: str,
+    audio_url: str,
+    debug: list[str] | None = None,
+    use_new_gen: bool = False,
 ) -> dict:
     """Chaine complete : un fichier audio en entree, une partition en sortie.
 
@@ -424,7 +457,7 @@ def generate_chart(
     if config.USE_STEM_ANALYSIS:
         try:
             times, note_types, durations, accent_spans = notes_from_stems(
-                audio_path, samples, sample_rate, debug
+                audio_path, samples, sample_rate, debug, use_new_gen
             )
         except stems.StemSeparationError as error:
             print(
@@ -436,14 +469,23 @@ def generate_chart(
     if times is None:
         # Les analyses de repli ne produisent pas de notes tenues.
         if config.USE_BAND_ANALYSIS:
-            times, note_types, accent_spans = notes_from_bands(samples, sample_rate)
+            times, note_types, accent_spans = notes_from_bands(samples, sample_rate, use_new_gen)
         else:
             times, note_types = notes_from_full_spectrum(samples, sample_rate)
             accent_spans = []
 
-    note_list = mark_accent_notes(
-        notes.times_to_notes(times, note_types, durations_s=durations), accent_spans
-    )
+    note_list = notes.times_to_notes(times, note_types, durations_s=durations)
+
+    # Detect finishes (grosses notes) si active
+    if config.DETECT_FINISHES and use_new_gen:
+        grid = _build_grid_for_finishes(samples, sample_rate, times, use_new_gen)
+        finishes = analysis.detect_finishes(
+            samples, sample_rate, grid, config.FINISH_ENERGY_PERCENTILE, config.FINISH_MIN_GAP_MS
+        )
+        for ft, ftype in finishes:
+            note_list.append({"timeMs": round(ft * 1000), "type": ftype, "finish": True, "accent": True})
+
+    note_list = mark_accent_notes(note_list, accent_spans)
 
     return build_chart(
         title=title,
@@ -452,3 +494,17 @@ def generate_chart(
         bpm=analysis.estimate_tempo(samples, sample_rate),
         note_list=note_list,
     )
+
+
+def _build_grid_for_finishes(
+    samples, sample_rate: int, onset_times: list[float], use_new_gen: bool
+) -> list[float]:
+    """Construit une grille pour la detection de finishes."""
+    beats = analysis.beat_times(samples, sample_rate)
+    if use_new_gen and config.USE_ADAPTIVE_GRID:
+        return analysis.adaptive_grid(beats, onset_times)
+    else:
+        all_onsets = sorted(t for times in [onset_times] for t in times)
+        density = analysis.onsets_per_beat(all_onsets, beats)
+        accents = analysis.find_accent_beats(density)
+        return analysis.variable_grid(beats, accents)

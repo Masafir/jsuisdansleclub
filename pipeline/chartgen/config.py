@@ -208,3 +208,93 @@ CHART_FORMAT_VERSION = 1
 #: Chemin absolu, et pas relatif : la CLI doit ecrire au bon endroit quel que
 #: soit le dossier depuis lequel on la lance.
 CLIENT_CHARTS_DIR = REPO_ROOT / "client" / "public" / "charts"
+
+# --- Nouveau generateur (--new-gen) ------------------------------------------
+# Ces parametres ne sont actifs que quand la CLI est appelee avec --new-gen.
+#
+# TOUS valent False par defaut, et c'est la CLI qui les leve. C'est la seule
+# facon de garantir que l'ancienne generation reste bit-a-bit identique : un
+# defaut a True suffirait a modifier le mode legacy des qu'un appel oublie de
+# verifier le mode, ce qui s'est produit avec HPSS.
+
+#: Separation harmonique/percussive avant detection d'onsets : isole la partie
+#: percussive, donc des onsets non pollues par la guitare et les synthes.
+USE_HPSS = False
+
+#: Force de la separation HPSS. Plus haut = separation plus franche.
+HPSS_MARGIN = 3.0
+
+#: Recale l'onset detecte (pic du flux spectral) sur le minimum d'energie qui
+#: le precede, c'est-a-dire sur l'attaque reelle plutot que sur son sommet.
+USE_ONSET_BACKTRACK = False
+
+#: Utilise une grille a subdivision adaptive (2/3/4/6/8/12) au lieu de fixe 2/4.
+#: Detecte la densite locale d'onsets par temps et choisit la subdivision.
+USE_ADAPTIVE_GRID = False
+
+#: Candidats de subdivision pour la grille adaptive.
+#: 2=croches, 3=triolets, 4=doubles, 6=sextuplets, 8=triples, 12=quadruples.
+SUBDIVISION_CANDIDATES = (2, 3, 4, 6, 8, 12)
+
+#: Fenetre (en temps) pour estimer la densite locale et choisir la subdivision.
+ADAPTIVE_GRID_WINDOW_BEATS = 4
+
+#: Seuil de densite (onsets/temps) pour monter en subdivision.
+#: Si densite > seuil * mediane_locale -> subdivision superieure.
+ADAPTIVE_GRID_DENSITY_RATIO = 1.5
+
+#: Guide le choix du lead par structure musicale (verse/chorus/bridge).
+#: Necessite detect_sections() dans phrases.py.
+USE_STRUCTURE_GUIDANCE = False
+
+#: Nombre de sections visees par la segmentation structurelle. Un morceau
+#: pop/rock typique tient en 6 blocs (intro, couplet, refrain, pont, ...).
+STRUCTURE_SECTIONS = 6
+
+#: Seuils de caracterisation d'une section, sur des grandeurs normalisees
+#: (centroide spectral rapporte a Nyquist, energie RMS moyenne).
+#: Brillant ET energique -> refrain ; tres calme -> pont ; sinon couplet.
+STRUCTURE_CHORUS_CENTROID = 0.4
+STRUCTURE_CHORUS_ENERGY = 0.6
+STRUCTURE_BRIDGE_ENERGY = 0.2
+
+#: Labels de sections reconnus et leur lead prefere.
+#: Chorus -> vocals, Verse -> drums, Bridge -> bass/vocals, Intro/Outro -> drums.
+SECTION_LEAD_PREFERENCE = {
+    "chorus": "vocals",
+    "verse": "drums",
+    "bridge": "bass",
+    "intro": "drums",
+    "outro": "drums",
+    "solo": "other",
+}
+
+#: Force de la preference de section sur la saillance du lead. 1.0 = aucune
+#: influence. Mesure : a 1.5, le lead se fige sur la batterie (30 phrases sur
+#: 32 pour Haruka Kanata, contre une repartition variee sans guidage).
+STRUCTURE_LEAD_BOOST = 1.5
+
+#: Boost de classification KA pour candidats caisse claire (MID band fort, LOW faible).
+#: Si MID > LOW * ce_facteur -> force KA meme si ratio global passe pas.
+SNARE_KA_BOOST = 1.3
+
+#: Tolerance, en secondes, autour d'un temps 2/4 pour y reconnaitre une caisse
+#: claire et forcer un KA.
+#:
+#: ATTENTION : a 0.15 s et 172 BPM (un temps = 0.35 s), la fenetre couvre pres
+#: de la moitie de chaque temps 2 et 4 — ce n'est plus une detection de caisse
+#: claire, c'est un forcage du contretemps. Mesure sur Haruka Kanata : le ratio
+#: DON/KA passe de 55/45 a 25/75. Baisser vers 0.05 pour un vrai ciblage.
+SNARE_BEAT_TOLERANCE_S = 0.15
+
+#: Active la detection de finishes (grosses notes) sur crêtes spectrales larges.
+DETECT_FINISHES = False
+
+#: Seuil d'energie spectrale (percentile) pour qualifier un finish.
+FINISH_ENERGY_PERCENTILE = 95
+
+#: Duree minimale entre deux finishes (ms) - evite le spam.
+FINISH_MIN_GAP_MS = 500
+
+#: Type de note pour les finishes (None = meme type que l'onset sous-jacent).
+FINISH_NOTE_TYPE = None
