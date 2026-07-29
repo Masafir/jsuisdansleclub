@@ -102,7 +102,25 @@ Le seuil des tenues a aussi dû être assoupli (`USE_RELAXED_HOLDS`) : à 2,0 at
 
 **Leçon de méthode** : une mesure contre une grille théorique peut être circulaire — comparer nos notes à une grille dont nous fixons nous-mêmes les paramètres validait notre propre grille, pas la musique. Seule la comparaison **note à note avec une partition humaine** a révélé le biais de 65 ms. Et la beatmap de référence utilise plus de 250 points de timing, donc aucune grille à BPM unique ne la décrit.
 
-Restent ouverts : des trous ponctuels de densité quand le lead choisi est silencieux, et les finishes qui ne produisent rien (le champ `finish` n'existe même pas côté client).
+### Densité rapprochée de Futsuu, trous de densité éliminés
+
+Deux retours supplémentaires : il manquait des notes, et il fallait viser Futsuu (normal) plutôt que Courage (extrême) — la comparaison précédente se faisait contre la mauvaise référence.
+
+**Cause des trous de densité** trouvée par instrumentation : 20 des 32 phrases de Haruka Kanata étaient « affamées » — le budget demandait plus de notes que le lead (+ ossature) n'en avait en stock localement, alors que d'autres pistes avaient de la matière au même instant. Le mécanisme d'attention (un seul lead par phrase) créait donc ses propres angles morts. `USE_POOL_SPILLOVER` complète le budget avec les événements les plus forts des pistes non retenues, sans jamais rogner ce que le lead a déjà obtenu.
+
+**La grille adaptative dégradait aussi la densité**, en plus du timing déjà documenté : 2,6 notes/s avec elle contre 3,3 sans, à réglage identique. Deuxième raison de la retirer de `NEW_GEN_FLAGS`, en plus de la dégradation du timing (4 → 15-29 ms).
+
+`TARGET_NOTES_PER_SECOND` passe de 1,8 à 4,0. Point important : ce réglage n'a **jamais été isolé** derrière `--new-gen` — c'est un paramètre de densité partagé par les deux modes, pas une technique expérimentale — donc son changement est actif même sans le drapeau, et la non-régression bit-à-bit ne s'applique pas à lui (elle reste valide pour les techniques réellement gatées).
+
+**Résultats sur Haruka Kanata** :
+
+| | avant | après |
+|---|---|---|
+| Densité | 1,60/s | **3,11/s** (Futsuu : 3,12/s) |
+| Tranches de 5 s à ≤ 2 notes | plusieurs | **0/18** |
+| Séries : médiane / max | 2 / 37 | 1 / 4 |
+
+Reste ouvert : les finishes qui ne produisent rien (le champ `finish` n'existe même pas côté client), et le ratio DON/KA légèrement haut (56 % contre 45-52 % visés) à cette densité plus élevée.
 
 Deux fonctionnalités restent inopérantes : les **finishes** ne produisent aucune note et le champ `finish` n'existe pas côté client, et les **tenues disparaissent** en `--new-gen` (3 → 0 sur My Hero Academia), probablement parce que le backtracking rend davantage d'onsets sur la voix, ce qui fait classer les envolées comme du chant scandé.
 

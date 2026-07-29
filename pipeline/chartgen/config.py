@@ -92,7 +92,7 @@ PHRASE_BEATS = 8
 
 #: Densite moyenne visee, en notes par seconde. C'est LE levier principal de
 #: difficulte : le budget de chaque phrase en decoule.
-TARGET_NOTES_PER_SECOND = 1.8
+TARGET_NOTES_PER_SECOND = 4.0
 
 #: Bornes du multiplicateur de budget selon l'intensite relative de la phrase.
 #: Une phrase calme peut descendre a 40 % de la densite cible, une phrase
@@ -267,6 +267,7 @@ CLIENT_CHARTS_DIR = REPO_ROOT / "client" / "public" / "charts"
 #: une — l'oubli de USE_HPSS avait desactive l'etape la plus couteuse sans le
 #: moindre message.
 NEW_GEN_FLAGS = (
+    "USE_POOL_SPILLOVER",
     "USE_RELAXED_HOLDS",
     "USE_ONSET_LATENCY_COMPENSATION",
     "USE_CONSTANT_TEMPO",
@@ -274,9 +275,11 @@ NEW_GEN_FLAGS = (
     "USE_RUN_CAP",
     "USE_RELATIVE_NOTE_TYPE",
     "USE_HPSS",
-    "USE_ADAPTIVE_GRID",
     "USE_STRUCTURE_GUIDANCE",
     "DETECT_FINISHES",
+    # USE_ADAPTIVE_GRID volontairement absente : mesuree deux fois nefaste
+    # (timing 4 -> 15-29 ms, densite plafonnee a 2,6/s au lieu de 3,3/s sur
+    # Haruka Kanata). Le code et le drapeau restent pour la re-tester.
 )
 
 #: Plafonne le nombre de notes consecutives de la meme couleur.
@@ -323,6 +326,17 @@ USE_ONSET_BACKTRACK = False
 
 #: Retranche ONSET_LATENCY_MS aux instants detectes.
 USE_ONSET_LATENCY_COMPENSATION = False
+
+#: Complete le budget d'une phrase avec les evenements les plus forts des
+#: pistes non retenues, quand lead + ossature n'en ont pas assez.
+#:
+#: Sans ca, la densite plafonne bien en dessous de TARGET_NOTES_PER_SECOND des
+#: que ce dernier depasse ~2.5/s : 20 des 32 phrases de Haruka Kanata etaient
+#: « affamees » (moins d'evenements dans le pool du lead que le budget n'en
+#: demande), meme quand d'autres pistes avaient de la matiere au meme instant.
+#: C'est aussi ce qui cree des trous dans les passages intenses ou le lead
+#: choisi se tait localement.
+USE_POOL_SPILLOVER = False
 
 #: Compensation de la latence de detection, en millisecondes, retranchee aux
 #: instants detectes.

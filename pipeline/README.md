@@ -82,17 +82,19 @@ Notre densité (~1,5/s) situe nos partitions au niveau **Kantan**.
 
 ### État actuel
 
-Mesuré sur Haruka Kanata, en comparant **note à note** avec la beatmap humaine :
+Mesuré sur Haruka Kanata, comparaison **note à note** avec les beatmaps
+humaines (Kantan = facile, Futsuu = normal, Courage = extrême) :
 
-| | legacy | `--new-gen` | cible humaine |
+| | avant | `--new-gen` final | cible Futsuu |
 |---|---|---|---|
-| Écart médian à la note humaine | 64 ms | **11 ms** | — |
-| Notes à moins de 25 ms d'une note humaine | 13 % | **85 %** | — |
-| DON % | 55 | **52** | 45-52 |
+| Densité | 1,60/s | **3,11/s** | 3,12/s |
+| DON % | 55 | 56 | 45-52 |
 | Séries : médiane / max | 2 / 37 | **1 / 4** | 1 / 4-5 |
 | Slides | 4 | 5 | — |
+| Tranches de 5 s à ≤ 2 notes | plusieurs | **0/18** | — |
+| Écart médian vs Courage | 64 ms | 12 ms | — |
 
-Trois mesures ont amené ces résultats :
+Cinq mesures ont amené ces résultats :
 
 - **Le décalage était systématique**, pas aléatoire : nos notes tombaient ~65 ms
   trop tard, le flux spectral culminant après le début de l'attaque (fenêtre
@@ -100,18 +102,28 @@ Trois mesures ont amené ces résultats :
   cette latence **en sortie** — appliquée à la détection, la quantification
   l'absorbait.
 - **Le backtracking dégradait fortement** : il fait tomber la concordance de
-  87 % à 54 % en sur-corrigeant. Retiré de `NEW_GEN_FLAGS`, le drapeau reste
-  pour le re-tester.
+  87 % à 54 % en sur-corrigeant. Retiré de `NEW_GEN_FLAGS`.
 - **Le seuil des tenues était trop strict** : à 2,0 attaques/s, 9 des 13
-  envolées détectées étaient rejetées alors qu'une envolée chantée compte
-  naturellement 2 à 3 syllabes par seconde. `USE_RELAXED_HOLDS` porte le
-  plafond à 3,2.
+  envolées détectées étaient rejetées. `USE_RELAXED_HOLDS` porte le plafond à
+  3,2.
+- **Les phrases étaient « affamées »** : 20 des 32 phrases de Haruka Kanata
+  demandaient plus de notes que le lead (+ ossature) n'en avait en stock,
+  alors que d'autres pistes avaient de la matière au même instant — c'est ce
+  qui créait les trous de densité pendant les passages intenses.
+  `USE_POOL_SPILLOVER` complète le budget avec les événements les plus forts
+  des pistes non retenues, sans jamais rogner le lead déjà choisi.
+- **La grille adaptative dégradait aussi la densité**, en plus du timing déjà
+  documenté : 2,6 notes/s avec elle contre 3,3 sans, sur le même réglage.
+  Retirée de `NEW_GEN_FLAGS` pour cette seconde raison.
 
-Restent deux points ouverts : des **trous ponctuels** (une tranche de 5 s à
-2 notes malgré une énergie pleine, quand le lead choisi est silencieux à ce
-moment), et **les finishes** qui ne produisent rien — `detect_finishes` rend
-zéro note et le champ `finish` n'existe ni dans `Chart` côté client ni dans le
-rendu.
+`TARGET_NOTES_PER_SECOND` est passé de 1,8 à **4,0** — ce réglage n'a jamais
+été isolé derrière `--new-gen` (c'est un réglage de densité partagé par les
+deux modes, pas une technique expérimentale), donc ce changement est actif
+même sans le drapeau.
+
+Reste ouvert : **les finishes** ne produisent toujours rien — `detect_finishes`
+rend zéro note et le champ `finish` n'existe ni dans `Chart` côté client ni
+dans le rendu.
 
 Les maps de référence sont dans `F:\jsuisdansleclub\osumap\` (accessibles sous
 `/mnt/f/...` depuis WSL) et se ré-analysent à tout moment pour recalibrer.

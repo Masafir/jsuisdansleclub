@@ -336,7 +336,24 @@ def notes_from_stems(
             )
 
         backbone = phrases.pick_top(backbone_pool, budget - len(lead_events))
-        picked += phrases.combine_streams(lead_events, backbone, config.MIN_NOTE_GAP_S)
+        phrase_picked = phrases.combine_streams(lead_events, backbone, config.MIN_NOTE_GAP_S)
+
+        if use_new_gen and config.USE_POOL_SPILLOVER:
+            # Lead + ossature n'ont pas toujours assez de matiere pour remplir
+            # le budget : on complete avec ce que les AUTRES pistes ont au meme
+            # instant. Priorite intacte : phrase_picked n'est jamais rogne.
+            backbone_stem = "" if lead == "drums" else "drums"
+            spillover_pool = [
+                event
+                for stem, events in in_span.items()
+                if stem != lead and stem != backbone_stem
+                for event in events
+            ]
+            phrase_picked = phrases.top_up(
+                phrase_picked, spillover_pool, budget, config.MIN_NOTE_GAP_S
+            )
+
+        picked += phrase_picked
 
         for stem in history:
             history[stem].append(signatures[stem])

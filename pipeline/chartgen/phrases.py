@@ -289,6 +289,28 @@ def pick_top(events: list[Event], budget: int) -> list[Event]:
     return sorted(strongest)
 
 
+def top_up(
+    picked: list[Event], pool: list[Event], budget: int, min_gap_s: float
+) -> list[Event]:
+    """Comble le budget restant avec les evenements les plus forts d'un pool.
+
+    Le lead et l'ossature gardent toujours la priorite : `picked` n'est jamais
+    rogne, seul le complement est plafonne au budget restant.
+
+    Sert a resoudre les phrases « affamees », ou le lead choisi n'a pas assez
+    d'evenements pour remplir son budget alors que d'autres pistes en ont au
+    meme moment. Mesure sur Haruka Kanata : 20 phrases sur 32 etaient dans ce
+    cas, ce qui plafonnait la densite globale bien en dessous de la cible quel
+    que soit son reglage, et laissait des trous dans les passages intenses ou
+    le lead se taisait localement.
+    """
+    remaining = budget - len(picked)
+    if remaining <= 0 or not pool:
+        return picked
+    extra = pick_top(pool, remaining)
+    return combine_streams(picked, extra, min_gap_s)
+
+
 def combine_streams(
     primary: list[Event], secondary: list[Event], min_gap_s: float
 ) -> list[Event]:
