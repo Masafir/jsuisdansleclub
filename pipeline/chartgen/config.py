@@ -118,6 +118,34 @@ NOVELTY_FLOOR = 0.25
 #: illisible.
 LEAD_HYSTERESIS = 1.3
 
+# --- Notes tenues (holds) ---------------------------------------------------
+
+#: Pistes sondees pour les tenues, et le type de note produit. La voix tenue
+#: (envolee lyrique) donne un hold KA ; ajouter {"bass": "DON"} pour tenir les
+#: nappes de basse.
+HOLD_STEM_NOTE_TYPE = {"vocals": "KA"}
+
+#: Duree minimale d'une tenue, en secondes. En dessous, c'est une syllabe
+#: longue, pas une envolee.
+HOLD_MIN_DURATION_S = 1.2
+
+#: Duree maximale, en secondes : au-dela on tronque — tenir plus longtemps
+#: n'est plus du jeu, c'est de l'attente.
+HOLD_MAX_DURATION_S = 6.0
+
+#: Deux segments tenus separes par un trou plus court que ceci fusionnent :
+#: une respiration au milieu d'une envolee n'en fait pas deux.
+HOLD_MERGE_GAP_S = 0.3
+
+#: Seuil d'activite : fraction du percentile d'energie de la piste. La voix
+#: isolee est silencieuse entre les phrases, ce qui rend ce seuil tres net.
+HOLD_RMS_RATIO = 0.35
+HOLD_RMS_PERCENTILE = 90
+
+#: Au-dela de cette densite d'attaques (par seconde) dans le segment, ce n'est
+#: pas une tenue mais une phrase rythmique (du chant scande, du rap).
+HOLD_MAX_ONSETS_PER_S = 2.0
+
 # --- Grille rythmique ------------------------------------------------------
 
 #: Subdivisions par temps en regime normal. 2 = croches.

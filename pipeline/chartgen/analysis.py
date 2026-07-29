@@ -365,6 +365,52 @@ def strength_at(
     return [float(envelope[frame]) for frame in frames]
 
 
+def rms_envelope(samples: np.ndarray) -> np.ndarray:
+    """Energie RMS par trame : le volume au fil du temps, version lissee."""
+    return librosa.feature.rms(y=samples, hop_length=config.HOP_LENGTH)[0]
+
+
+def sustained_segments(
+    rms: np.ndarray,
+    sample_rate: int,
+    threshold: float,
+    min_duration_s: float,
+    merge_gap_s: float,
+) -> list[tuple[float, float]]:
+    """Plages ou l'energie reste au-dessus du seuil assez longtemps.
+
+    C'est la matiere premiere des notes tenues : sur une piste de voix isolee,
+    une envolee lyrique est un long plateau d'energie, la ou du chant scande
+    fait des pics brefs. Les trous plus courts que `merge_gap_s` (une
+    respiration) sont fusionnes, puis seuls les segments d'au moins
+    `min_duration_s` survivent.
+    """
+    frame_s = config.HOP_LENGTH / sample_rate
+    active = rms > threshold
+
+    # Plages contigues actives, en secondes.
+    segments: list[tuple[float, float]] = []
+    start: int | None = None
+    for index, is_active in enumerate(active):
+        if is_active and start is None:
+            start = index
+        elif not is_active and start is not None:
+            segments.append((start * frame_s, index * frame_s))
+            start = None
+    if start is not None:
+        segments.append((start * frame_s, len(active) * frame_s))
+
+    # Fusion des respirations.
+    merged: list[tuple[float, float]] = []
+    for segment in segments:
+        if merged and segment[0] - merged[-1][1] < merge_gap_s:
+            merged[-1] = (merged[-1][0], segment[1])
+        else:
+            merged.append(segment)
+
+    return [(s, e) for s, e in merged if e - s >= min_duration_s]
+
+
 def band_energies_bulk(
     samples: np.ndarray,
     sample_rate: int,

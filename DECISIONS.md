@@ -53,6 +53,14 @@ Fenêtres de jugement : ±40 ms `PERFECT`, ±90 ms `GOOD`, au-delà `MISS`.
 - **La partition de test est du code, pas un JSON** (`client/src/chart/testChart.ts`) : elle génère les notes procéduralement. Le format JSON n'apparaîtra qu'avec le pipeline, quand il faudra transporter des partitions générées.
 - **Un prototype d'estimation de tempo est conservé** dans `pipeline/prototype/` : sans dépendance (ffmpeg seul), il donne BPM et offset d'un morceau. Il ne remplace pas librosa — il travaille sur l'énergie totale, pas sur le flux spectral — mais il documente la méthode et dépanne pour caler une partition à la main.
 
+## Hybride Guitar Hero / taiko : deux lanes et notes tenues (29 juil. 2026)
+
+Refonte du format de jeu, validée sur trois choix :
+
+- **Deux lanes distinctes**, une par couleur : KA (aigu) en haut, DON (grave) en bas — comme les fréquences. Chaque lane est une **file de jugement indépendante** (un Judge par lane) : l'erreur « mauvaise couleur » disparaît, appuyer dans le vide ne coûte rien (convention Guitar Hero/DDR). C'est ce qui rend possible le parallèle tenue + frappes.
+- **Notes tenues** (champ `durationMs`, optionnel donc rétrocompatible) : le début se juge comme un tap, la tenue crédite des points au prorata du temps tenu, **hors combo et hors ratio de survie**. Règle indulgente : relâcher tôt arrête les points, sans punir. Une tenue menée au bout déclenche le feedback maximal. Au clavier, le hold survit tant qu'une des deux touches de la lane reste enfoncée ; sur mobile, l'appui et le relâchement des boutons sont transmis avec capture de pointeur.
+- **Détection des envolées** sur la piste de voix isolée : un long plateau d'énergie RMS (≥ 1,2 s), fusionné par-dessus les respirations courtes, et **rejeté si truffé d'attaques** (chant scandé ≠ tenue). Le début est recalé sur la grille. Pendant une tenue, les taps de la même lane sont purgés ; l'autre lane garde les siens. Mesuré sur Kassie Krut : 6 envolées de 2 à 6 s, 0 collision même lane, 11 taps DON en parallèle sous les tenues.
+
 ## Séparation de pistes et couche « charter » (28 juil. 2026)
 
 Sur la pop/house (kick sur chaque temps), l'analyse par bandes produisait 700 notes ininterrompues : le problème n'était plus l'irrégularité mais l'absence de contraste et d'attention. Décision : passer à la séparation de sources (demucs) surmontée d'une couche « charter » qui *choisit* au lieu de tout garder.

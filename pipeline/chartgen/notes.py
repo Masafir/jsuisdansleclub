@@ -157,6 +157,53 @@ def merge_bands(
     return [time_s for time_s, _ in kept], [note_type for _, note_type in kept]
 
 
+def filter_hold_segments(
+    segments: list[tuple[float, float]],
+    onset_times: list[float],
+    max_onsets_per_s: float,
+    max_duration_s: float,
+) -> list[tuple[float, float]]:
+    """Ne garde que les segments qui sont de vraies tenues.
+
+    Fonction pure. Un segment energique mais truffe d'attaques est une phrase
+    rythmique (chant scande, rap) : le jouer en tenue serait a contretemps de
+    ce qu'on entend. Les segments trop longs sont tronques, pas jetes — le
+    debut de l'envolee reste le moment fort.
+    """
+    holds: list[tuple[float, float]] = []
+    for start, end in segments:
+        duration = end - start
+        if duration <= 0:
+            continue
+        onsets = sum(1 for t in onset_times if start < t < end)
+        if onsets / duration > max_onsets_per_s:
+            continue
+        holds.append((start, min(end, start + max_duration_s)))
+    return holds
+
+
+def carve_taps_for_holds(
+    events: list[tuple[float, float, str]],
+    holds: list[tuple[float, float]],
+    note_type: str,
+    margin_s: float,
+) -> list[tuple[float, float, str]]:
+    """Retire les frappes du type donne qui chevauchent une tenue.
+
+    Fonction pure. Pendant qu'une lane tient, elle ne peut pas aussi frapper :
+    ses taps dans l'intervalle (elargi d'une marge) disparaissent. Les taps de
+    l'autre lane restent — c'est tout l'interet du format deux lanes.
+    """
+    def clashes(time_s: float) -> bool:
+        return any(start - margin_s <= time_s <= end + margin_s for start, end in holds)
+
+    return [
+        event
+        for event in events
+        if event[2] != note_type or not clashes(event[0])
+    ]
+
+
 def classify_note_type(
     low_energy: float,
     high_energy: float,
@@ -195,6 +242,7 @@ def times_to_notes(
     times: list[float],
     types: list[NoteType],
     offset_ms: int = 0,
+    durations_s: list[float] | None = None,
 ) -> list[dict]:
     """Assemble instants et types en notes du format de partition.
 
@@ -222,8 +270,18 @@ def times_to_notes(
     """
     if len(times) != len(types):
         raise ValueError(f"Aie coup dur times et types ne sont pas de la même longueur: {len(times)} != {len(types)}")
+    if durations_s is not None and len(durations_s) != len(times):
+        raise ValueError(
+            f"durations_s doit suivre times : {len(durations_s)} != {len(times)}"
+        )
+
     notes = []
-    for t, note_type in zip(times, types):
+    for index, (t, note_type) in enumerate(zip(times, types)):
         times_ms = round(t * 1000) + offset_ms
-        notes.append({"timeMs": times_ms, "type": note_type})
+        note = {"timeMs": times_ms, "type": note_type}
+        # Une duree non nulle fait de la note un hold ; zero ou absent = tap.
+        duration = durations_s[index] if durations_s is not None else 0.0
+        if duration > 0:
+            note["durationMs"] = round(duration * 1000)
+        notes.append(note)
     return sorted(notes, key=lambda note: note["timeMs"])  

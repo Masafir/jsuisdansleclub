@@ -147,12 +147,60 @@ def stem_streams(stem_paths: dict[str, Path]) -> dict[str, list[phrases.Event]]:
     return streams
 
 
+def detect_holds(
+    stem_paths: dict[str, Path], grid: list[float], tolerance: float
+) -> list[tuple[float, float, str]]:
+    """Notes tenues : (debut, duree, type), depuis les pistes configurees.
+
+    Une envolee lyrique est un long plateau d'energie sur la piste de voix
+    isolee, sans rafale d'attaques dedans (sinon c'est du chant scande). Le
+    debut est recale sur la grille rythmique quand elle existe : on part de la
+    tenue en rythme.
+    """
+    holds: list[tuple[float, float, str]] = []
+
+    for stem, note_type in config.HOLD_STEM_NOTE_TYPE.items():
+        path = stem_paths.get(stem)
+        if path is None:
+            continue
+        samples, sample_rate = analysis.load_audio(str(path))
+
+        rms = analysis.rms_envelope(samples)
+        positive = rms[rms > 0]
+        if positive.size == 0:
+            continue  # piste muette (instrumental) : rien a tenir
+        threshold = float(
+            np.percentile(positive, config.HOLD_RMS_PERCENTILE) * config.HOLD_RMS_RATIO
+        )
+
+        segments = analysis.sustained_segments(
+            rms,
+            sample_rate,
+            threshold,
+            config.HOLD_MIN_DURATION_S,
+            config.HOLD_MERGE_GAP_S,
+        )
+
+        envelope = analysis.onset_envelope(samples, sample_rate)
+        onsets = analysis.detect_onset_times(envelope, sample_rate)
+        segments = notes.filter_hold_segments(
+            segments, onsets, config.HOLD_MAX_ONSETS_PER_S, config.HOLD_MAX_DURATION_S
+        )
+
+        for start, end in segments:
+            snapped = analysis.quantize_to_grid([start], grid, tolerance) if grid else []
+            begin = snapped[0] if snapped else start
+            holds.append((begin, end - begin, note_type))
+
+    return sorted(holds)
+
+
 def notes_from_stems(
     audio_path: str,
     samples,
     sample_rate: int,
     debug: list[str] | None = None,
-) -> tuple[list[float], list[notes.NoteType], list[tuple[float, float]]]:
+) -> tuple[list[float], list[notes.NoteType], list[float], list[tuple[float, float]]]:
     """Analyse « charter » : pistes separees, attention par nouveaute, budget.
 
     Phrase par phrase (8 temps) :
@@ -165,7 +213,8 @@ def notes_from_stems(
          ossature de kicks complete si la batterie n'est pas le lead — la
          pulsation ne disparait jamais.
     """
-    streams = stem_streams(stems.separate_stems(audio_path))
+    stem_paths = stems.separate_stems(audio_path)
+    streams = stem_streams(stem_paths)
 
     # Le beat tracking se fait sur le mix complet : plus fiable que sur une
     # piste isolee.
@@ -234,21 +283,50 @@ def notes_from_stems(
             lead_counts[lead] += 1
 
     picked.sort()
+
+    # Notes tenues : les envolees detectees chassent les taps de leur lane sur
+    # leur duree (on ne peut pas tenir et frapper de la meme main), puis
+    # s'inserent comme notes a duree. L'autre lane garde ses taps : c'est le
+    # parallele tenue + frappes du format deux lanes.
+    holds = detect_holds(stem_paths, grid, tolerance)
+    for _, hold_type in config.HOLD_STEM_NOTE_TYPE.items():
+        spans = [(start, start + duration) for start, duration, t in holds if t == hold_type]
+        if spans:
+            picked = notes.carve_taps_for_holds(
+                picked, spans, hold_type, config.MIN_NOTE_GAP_S
+            )
+
+    times = [time_s for time_s, _, _ in picked]
+    note_types = [note_type for _, _, note_type in picked]
+    durations = [0.0] * len(times)
+    for start, duration, note_type in holds:
+        times.append(start)
+        note_types.append(note_type)
+        durations.append(duration)
+
+    # Retrier les trois listes ensemble par instant croissant.
+    order = sorted(range(len(times)), key=lambda index: times[index])
+    times = [times[index] for index in order]
+    note_types = [note_types[index] for index in order]
+    durations = [durations[index] for index in order]
+
     accent_spans = [
         (beats[index], beats[index + 1])
         for index in sorted(accents)
         if index + 1 < len(beats)
     ]
 
-    if debug is not None and lead_counts:
-        summary = " · ".join(f"{stem} {count}" for stem, count in lead_counts.most_common())
-        debug.append(f"lead par phrase ({sum(lead_counts.values())} phrases) : {summary}")
+    if debug is not None:
+        if lead_counts:
+            summary = " · ".join(
+                f"{stem} {count}" for stem, count in lead_counts.most_common()
+            )
+            debug.append(
+                f"lead par phrase ({sum(lead_counts.values())} phrases) : {summary}"
+            )
+        debug.append(f"notes tenues : {len(holds)}")
 
-    return (
-        [time_s for time_s, _, _ in picked],
-        [note_type for _, _, note_type in picked],
-        accent_spans,
-    )
+    return times, note_types, durations, accent_spans
 
 
 def notes_from_bands(
@@ -342,9 +420,10 @@ def generate_chart(
     samples, sample_rate = analysis.load_audio(audio_path)
 
     times: list[float] | None = None
+    durations: list[float] | None = None
     if config.USE_STEM_ANALYSIS:
         try:
-            times, note_types, accent_spans = notes_from_stems(
+            times, note_types, durations, accent_spans = notes_from_stems(
                 audio_path, samples, sample_rate, debug
             )
         except stems.StemSeparationError as error:
@@ -355,6 +434,7 @@ def generate_chart(
             )
 
     if times is None:
+        # Les analyses de repli ne produisent pas de notes tenues.
         if config.USE_BAND_ANALYSIS:
             times, note_types, accent_spans = notes_from_bands(samples, sample_rate)
         else:
@@ -362,7 +442,7 @@ def generate_chart(
             accent_spans = []
 
     note_list = mark_accent_notes(
-        notes.times_to_notes(times, note_types), accent_spans
+        notes.times_to_notes(times, note_types, durations_s=durations), accent_spans
     )
 
     return build_chart(
