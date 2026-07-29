@@ -10,7 +10,7 @@ Jeu de rythme multijoueur en ligne dans le navigateur (voir CONTEXT.MD pour la v
 | Netcode | **Protocole binaire maison sur WebSocket brut** | La partie instructive du netcode (sérialisation, ticks, synchro d'horloge) sans réinventer le transport |
 | Front | **React** (lobby, menus) + **PixiJS** (rendu du jeu en WebGL) | React suffit pour l'UI, le gameplay doit être en canvas/WebGL |
 | Audio client | **Web Audio API** — `AudioContext.currentTime` est l'horloge maîtresse du gameplay | Seule horloge assez précise ; jamais `Date.now()`/`requestAnimationFrame` pour juger les hits |
-| Pipeline partitions | **Service Python** : `yt-dlp` (téléchargement audio YouTube) + `librosa` (beat tracking / détection d'onsets) → génère la partition (JSON) | Expérience cible dès le MVP : coller une URL YouTube |
+| Pipeline partitions | **Service Python** : `yt-dlp` (téléchargement audio YouTube) + `librosa` (beat tracking / détection d'onsets) → génère la partition (JSON). *Superseded 29 juil. : tourne côté client (seeder), pas en service central — voir « Modèle desktop/web hybride »* | Expérience cible dès le MVP : coller une URL YouTube |
 
 ## Gameplay retenu (27 juil. 2026)
 
@@ -237,6 +237,8 @@ La partition métronome (une note par temps) n'est pas amusante, et aucun régla
 
 ## Architecture cible
 
+> **Superseded le 29 juillet** par le modèle desktop/web hybride (voir la section dédiée plus bas) : le service Python n'est plus un service central sur notre infra, il tourne côté client (seeder). Le reste (Go orchestre les rooms, l'audio est servi en statique, pas de lecture YouTube embarquée) tient toujours.
+
 ```
 [Client React+PixiJS] ⇄ WebSocket (protocole binaire maison) ⇄ [Serveur Go : rooms, scores, synchro]
                                                                         │
@@ -247,6 +249,25 @@ La partition métronome (une note par temps) n'est pas amusante, et aucun régla
 - L'audio téléchargé est servi par notre backend (pas de lecture YouTube embarquée : CORS + pas de contrôle précis du timing).
 - ⚠️ yt-dlp : zone grise vis-à-vis des ToS YouTube — OK projet perso, prévoir l'import de fichier MP3 comme fallback (quasi gratuit à ajouter, même pipeline sans l'étape téléchargement).
 
+## Modèle desktop/web hybride : seeder et enjoyer (29 juil. 2026)
+
+Point de départ : demucs (ajouté pour améliorer la génération, cf. section bandes de fréquences) est lourd — le faire tourner sur le serveur de production posait trois problèmes liés entre eux, tous causés par le même choix de départ (traiter n'importe quelle chanson YouTube à la demande, en live, sur l'infra qu'on paie) :
+
+- **Calcul** : PyTorch + demucs sans GPU = minutes de CPU par morceau. Un seul VPS mutualisé avec le serveur de jeu Go se ferait contentionner dès que deux joueurs chargent des morceaux différents en même temps — au détriment du jeu en cours pour tout le monde.
+- **Légal** : yt-dlp est déjà en zone grise vis-à-vis des ToS YouTube (cf. ci-dessus). L'exécuter sur notre propre infra centralise ce risque au lieu de le distribuer.
+- **Stockage** : garder l'audio téléchargé de chaque morceau joué fait grossir le stockage sans limite naturelle.
+
+Décision : deux rôles de client, un seul code de gameplay.
+
+- **Enjoyer (web)** : le client React+PixiJS existant, servi dans le navigateur, zéro installation. Ne fait que jouer — rejoint une room, reçoit partition + audio, envoie ses scores. Aucune dépendance Python.
+- **Seeder (desktop, Tauri)** : la même UI React+PixiJS, empaquetée avec un cœur Rust (Tauri) et un sidecar Python (yt-dlp + demucs + librosa) qui résout « URL YouTube → audio + partition ». Un seeder peut aussi jouer depuis son appli desktop (superset de l'enjoyer), mais **n'est pas obligé de jouer** — il peut se contenter d'apporter le morceau.
+- **Créer une room nécessite d'être seeder** ; rejoindre ne nécessite que d'être enjoyer. Ça évite un rôle d'hôte séparé de la capacité technique d'apporter un morceau : qui peut créer une room peut forcément y apporter de la musique.
+- **Le serveur ne stocke que l'URL YouTube et la partition (JSON) en base — jamais l'audio.** yt-dlp et demucs ne tournent jamais côté serveur, uniquement dans l'appli du seeder. Rejouer un morceau déjà chargé une fois ne refait jamais tourner demucs (le cache par empreinte de `stems.py` s'en charge côté seeder, quel que soit l'ordre des sessions) ; au pire il faut que l'audio retransite une fois de plus vers le serveur.
+  - Limite connue : une vidéo YouTube peut disparaître, être retirée ou changer entre deux sessions — l'URL stockée n'est pas une garantie de reproductibilité à 100 % sur la durée, contrairement à un fichier qu'on aurait conservé nous-mêmes.
+- **Transfert audio en HTTP classique, pas par le WebSocket de jeu** : upload par le seeder, distribution statique aux enjoyers (repris du diagramme d'« Architecture cible » ci-dessus, moins le service Python central). Mélanger un gros transfert de fichier avec le canal temps réel (scores, synchro) risquerait du head-of-line blocking sur TCP, qui livre dans l'ordre.
+
+Conséquence sur le netcode : la détection de hit étant 100 % locale (« Principes d'architecture » ci-dessus), l'action d'un joueur n'affecte jamais l'état d'un autre — contrairement à un jeu de versus ou de course où l'input de l'un modifie directement le jeu de l'autre. Un protocole binaire ultra-précis a donc moins d'enjeu ici qu'il n'en aurait sur un projet à interaction directe entre joueurs ; cette ambition-là est repoussée à un futur projet (voiture ou versus fighting) où elle serait réellement justifiée. Un WebSocket classique suffit aux besoins de ce jeu (scores, état des danseurs, taunts).
+
 ## Roadmap MVP (ordre de dev)
 
 1. **Cœur de gameplay solo** (le plus risqué en ressenti) : PixiJS + Web Audio, une partition JSON codée à la main, hit detection avec fenêtres de timing (perfect/good/miss), score/combo, écran de calibration d'offset (utile dès le solo, indispensable en multi). Critère : « c'est satisfaisant à jouer ».
@@ -256,10 +277,10 @@ La partition métronome (une note par temps) n'est pas amusante, et aucun régla
 
 ## Choix restants (à trancher plus tard, pas bloquants)
 
-- Format de sérialisation binaire : maison pur, ou FlatBuffers/protobuf en référence pour comparer
-- Stockage des maps générées : disque local au début, S3-compatible ensuite
-- Déploiement (un seul VPS suffit largement pour le MVP)
-- Téléchargement YouTube (`yt-dlp`) : toujours pas implémenté — le pipeline ne fonctionne aujourd'hui que sur fichiers audio locaux déposés dans `client/public/audio/`
+- Format de sérialisation binaire : maison pur, ou FlatBuffers/protobuf en référence pour comparer — enjeu réduit depuis que le netcode vise un WebSocket classique (voir « Modèle desktop/web hybride »), reste à trancher si un format simple (JSON ?) suffit plutôt
+- ~~Stockage des maps générées~~ → tranché 29 juil. : ni disque local ni S3, seulement URL YouTube + partition JSON en base — voir « Modèle desktop/web hybride »
+- Déploiement (un seul VPS suffit largement pour le MVP) — d'autant plus vrai maintenant que ni yt-dlp ni demucs n'y tournent
+- ~~Téléchargement YouTube (`yt-dlp`)~~ → tranché 29 juil. : s'exécute uniquement côté seeder (desktop), jamais côté serveur — le pipeline actuel sur fichiers locaux (`client/public/audio/`) reste valable comme mode de test
 - Trois difficultés (Kantan/Futsuu/Muzukashii) : évoqué comme prochaine étape naturelle de `--new-gen`, pas commencé — voir « Densité rapprochée de Futsuu »
 - Finishes (grosses notes) : le mécanisme `DETECT_FINISHES` ne produit toujours aucune note, et le champ `finish` n'existe pas côté client
 - Multijoueur (serveur Go, protocole binaire, synchro) : rien n'est commencé, tout reste à l'état de principes d'architecture ci-dessous
