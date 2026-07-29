@@ -217,6 +217,18 @@ CLIENT_CHARTS_DIR = REPO_ROOT / "client" / "public" / "charts"
 # defaut a True suffirait a modifier le mode legacy des qu'un appel oublie de
 # verifier le mode, ce qui s'est produit avec HPSS.
 
+#: Drapeaux leves par --new-gen. La CLI itere sur cette liste au lieu de la
+#: recopier : ajouter une technique ici suffit, et on ne peut plus en oublier
+#: une — l'oubli de USE_HPSS avait desactive l'etape la plus couteuse sans le
+#: moindre message.
+NEW_GEN_FLAGS = (
+    "USE_HPSS",
+    "USE_ONSET_BACKTRACK",
+    "USE_ADAPTIVE_GRID",
+    "USE_STRUCTURE_GUIDANCE",
+    "DETECT_FINISHES",
+)
+
 #: Separation harmonique/percussive avant detection d'onsets : isole la partie
 #: percussive, donc des onsets non pollues par la guitare et les synthes.
 USE_HPSS = False

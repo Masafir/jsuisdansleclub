@@ -80,7 +80,11 @@ Verdict : le nouveau générateur **corrige le vrai défaut** — les longues s�
 - `SNARE_BEAT_TOLERANCE_S = 0.15` s couvre presque la moitié de chaque temps à 172 BPM : ce n'est plus une détection de caisse claire mais un forçage du contretemps. Piste : descendre vers 0,05 s.
 - `STRUCTURE_LEAD_BOOST = 1.5` fige le lead sur la batterie, puisque la majorité des sections sont étiquetées couplet/intro/outro qui la préfèrent toutes. Piste : baisser le boost, ou diversifier `SECTION_LEAD_PREFERENCE`.
 
-À retenir sur la méthode : le rapport d'analyse à l'origine de ces travaux annonçait 612 notes et 85 % de DON pour la partition générée, là où le fichier du dépôt en contient 144 avec un ratio 55/45 — déjà conforme à la référence osu! citée. **Seul le diagnostic des longues séries s'est vérifié.** D'où la règle : mesurer sur le fichier réel avant de calibrer un correctif.
+Deux fonctionnalités restent inopérantes : les **finishes** ne produisent aucune note et le champ `finish` n'existe pas côté client, et les **tenues disparaissent** en `--new-gen` (3 → 0 sur My Hero Academia), probablement parce que le backtracking rend davantage d'onsets sur la voix, ce qui fait classer les envolées comme du chant scandé.
+
+**Repère de durée, qui sert de test de bon fonctionnement** : sur 90 s avec pistes en cache, legacy ≈ 6 s et `--new-gen` ≈ 24 s, l'écart venant presque entièrement de HPSS. Une génération `--new-gen` revenant en 6 s signale qu'une étape ne tourne pas. C'est ainsi qu'on a détecté que `USE_HPSS` manquait dans la liste d'activation de la CLI. La liste des drapeaux vit désormais dans `config.NEW_GEN_FLAGS` et la CLI itère dessus, pour qu'un ajout ne puisse plus être oublié.
+
+À retenir sur la méthode : le rapport d'analyse à l'origine de ces travaux annonçait 612 notes et 85 % de DON pour la partition générée, là où le fichier du dépôt en contient 144 avec un ratio 55/45 — déjà conforme à la référence osu! citée. **Seul le diagnostic des longues séries s'est vérifié.** D'où la règle : mesurer sur le fichier réel avant de calibrer un correctif, et vérifier qu'une étape coûteuse coûte effectivement du temps.
 
 ## Hybride Guitar Hero / taiko : deux lanes et notes tenues (29 juil. 2026)
 

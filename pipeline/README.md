@@ -51,6 +51,17 @@ donc triolets et roulements possibles), **segmentation structurelle**
 couplet/refrain/pont pour orienter le lead, **forçage KA** sur les caisses
 claires des temps 2 et 4, et détection de **finishes**.
 
+### Combien de temps ça doit prendre
+
+Sur un morceau de 90 s dont les pistes sont **déjà en cache** : legacy ~6 s,
+`--new-gen` ~24 s. L'écart vient presque entièrement de HPSS (~17 s pour quatre
+appels). Une génération `--new-gen` qui reviendrait en 6 secondes est le signe
+qu'une étape ne s'exécute pas — c'est arrivé, `USE_HPSS` manquait dans la liste
+d'activation de la CLI, et rien ne le signalait.
+
+Premier passage sur un morceau inconnu : ajouter les minutes de séparation
+demucs, payées une seule fois (cache dans `data/stems/`).
+
 ### État actuel : à régler avant adoption
 
 Mesuré sur Haruka Kanata (90 s, 172 BPM) :
@@ -70,6 +81,16 @@ revanche deux réglages sur-corrigent :
   contretemps, d'où les 75 % de KA. Essayer 0,05 s.
 - `STRUCTURE_LEAD_BOOST` (1,5) fige le lead sur la batterie, car couplet, intro
   et outro la préfèrent toutes dans `SECTION_LEAD_PREFERENCE`.
+
+Et deux fonctionnalités ne produisent rien pour l'instant :
+
+- **Les finishes ne sortent jamais** : `detect_finishes` rend zéro note sur les
+  morceaux testés, et le champ `finish` n'existe ni dans `Chart` côté client ni
+  dans le rendu — même produit, il serait ignoré.
+- **Les tenues disparaissent** en `--new-gen` (3 en legacy, 0 avec le drapeau)
+  sur My Hero Academia. Piste : le backtracking rend davantage d'onsets sur la
+  piste de voix, et `filter_hold_segments` classe alors les envolées comme du
+  chant scandé.
 
 ### Règle d'isolation
 

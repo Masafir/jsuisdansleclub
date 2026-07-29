@@ -95,10 +95,10 @@ def main(argv: list[str] | None = None) -> int:
         config.USE_BAND_ANALYSIS = True
         config.USE_STEM_ANALYSIS = True
         config.USE_GRID_QUANTIZATION = True
-        config.USE_ADAPTIVE_GRID = True
-        config.USE_ONSET_BACKTRACK = True
-        config.USE_STRUCTURE_GUIDANCE = True
-        config.DETECT_FINISHES = True
+        # La liste vit dans config.NEW_GEN_FLAGS : la recopier ici exposait a
+        # en oublier une, et une etape manquante ne se voit nulle part.
+        for flag in config.NEW_GEN_FLAGS:
+            setattr(config, flag, True)
         suffix = "-newgen"
     else:
         suffix = ""
