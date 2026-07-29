@@ -14,7 +14,9 @@ Jeu de rythme multijoueur en ligne dans le navigateur (voir CONTEXT.MD pour la v
 
 ## Gameplay retenu (27 juil. 2026)
 
-**Format Taiko** : une seule lane horizontale, les notes défilent de droite à gauche vers une ligne de jugement fixe. Deux types de notes : `DON` (centre, touches F/J) et `KA` (bord, touches D/K).
+> **Superseded le 29 juillet** par le format hybride Guitar Hero / taiko à deux lanes (voir la section dédiée plus bas). Cette section reste comme trace historique du premier choix ; le raisonnement (deux touches par type, pas de lanes verticales façon DDR/osu!mania) tient toujours, seul le nombre de lanes a changé.
+
+**Format Taiko (version d'origine, remplacée)** : une seule lane horizontale, les notes défilent de droite à gauche vers une ligne de jugement fixe. Deux types de notes : `DON` (centre, touches F/J) et `KA` (bord, touches D/K).
 
 Pourquoi plutôt que 4 lanes verticales (DDR/osu!mania) ou un chemin façon *A Dance of Fire and Ice* :
 - Une bande horizontale libère tout l'écran pour les **danseurs**, qui sont le cœur social du jeu. Des lanes verticales mangent l'espace, surtout à plusieurs joueurs.
@@ -255,6 +257,9 @@ La partition métronome (une note par temps) n'est pas amusante, et aucun régla
 ## Choix restants (à trancher plus tard, pas bloquants)
 
 - Format de sérialisation binaire : maison pur, ou FlatBuffers/protobuf en référence pour comparer
-- Nombre de lanes/touches du gameplay (4 façon osu!mania semble un bon départ)
 - Stockage des maps générées : disque local au début, S3-compatible ensuite
 - Déploiement (un seul VPS suffit largement pour le MVP)
+- Téléchargement YouTube (`yt-dlp`) : toujours pas implémenté — le pipeline ne fonctionne aujourd'hui que sur fichiers audio locaux déposés dans `client/public/audio/`
+- Trois difficultés (Kantan/Futsuu/Muzukashii) : évoqué comme prochaine étape naturelle de `--new-gen`, pas commencé — voir « Densité rapprochée de Futsuu »
+- Finishes (grosses notes) : le mécanisme `DETECT_FINISHES` ne produit toujours aucune note, et le champ `finish` n'existe pas côté client
+- Multijoueur (serveur Go, protocole binaire, synchro) : rien n'est commencé, tout reste à l'état de principes d'architecture ci-dessous

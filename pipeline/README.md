@@ -28,9 +28,16 @@ bibliothèque du jeu au rechargement de la page.
 Le cœur de détection (`onset_envelope`, `detect_onset_times`,
 `enforce_min_gap`, `classify_note_type`, `times_to_notes`,
 `onset_envelopes_by_band`, `quantize_to_grid`, `select_strongest`) est
-**implémenté par amiral**, validé par les tests. La couche « charter »
-(`phrases.py`, `stems.py`) et l'orchestration ont été écrites par l'agent, à la
-demande d'amiral.
+**implémenté par amiral**, validé par les tests — c'est le seul code du
+pipeline resté dans le format TODO + tests du contrat de collaboration.
+
+Tout le reste (`phrases.py`, `stems.py`, l'orchestration de `chart.py`, et
+l'intégralité du travail de calibrage `--new-gen` — timing, alternance,
+densité, mesures contre les beatmaps osu!) a été **implémenté directement par
+l'agent**, à la demande explicite d'amiral à chaque fois. Ce n'est pas le mode
+par défaut du contrat (voir [AGENTS.md](../AGENTS.md), règle 3), mais le
+pipeline s'y est prêté : les itérations de calibrage sont plus rapides que
+d'apprentissage, sur du terrain déjà déblayé par le cœur de détection.
 
 ## Générateur expérimental `--new-gen`
 
@@ -44,12 +51,27 @@ cd pipeline && .venv/bin/python -m chartgen "../client/public/audio/mon morceau.
 Le fichier produit porte le suffixe `-newgen`, donc les deux versions
 **coexistent dans la bibliothèque** et se comparent en jouant.
 
-Ce qu'il active (tout est à `False` par défaut dans `config.py`, seule la CLI
-les lève) : **HPSS** avant la détection d'onsets, **backtracking** vers
-l'attaque réelle, **grille adaptative** (2/3/4/6/8/12 selon la densité locale,
-donc triolets et roulements possibles), **segmentation structurelle**
-couplet/refrain/pont pour orienter le lead, **forçage KA** sur les caisses
-claires des temps 2 et 4, et détection de **finishes**.
+Ce qu'il active aujourd'hui (liste exacte dans `config.NEW_GEN_FLAGS`, tout à
+`False` par défaut, seule la CLI les lève — la boucler dessus plutôt que la
+recopier est volontaire, voir « Règle d'isolation ») :
+
+| Drapeau | Effet |
+|---|---|
+| `USE_ONSET_LATENCY_COMPENSATION` | retranche ~65 ms aux instants détectés, appliqué en sortie de chaîne — voir « État actuel » |
+| `USE_CONSTANT_TEMPO` | grille sur un tempo constant ajusté, au lieu des temps bruts de `beat_track` (gigue ±25 ms) |
+| `USE_RUN_CAP` | plafonne les séries d'une même couleur (`MAX_SAME_TYPE_RUN`, 4 par défaut) |
+| `USE_RELATIVE_NOTE_TYPE` | la couleur suit le contour de sa propre piste plutôt qu'un seuil absolu |
+| `USE_DRUM_BACKBONE_SHARE` | l'ossature de batterie garde ses deux couleurs et une part réservée du budget |
+| `USE_POOL_SPILLOVER` | complète le budget d'une phrase avec les pistes non retenues quand le lead n'a pas assez de matière |
+| `USE_RELAXED_HOLDS` | seuil de densité d'attaques plus permissif pour qu'une tenue soit reconnue |
+| `USE_HPSS` | sépare harmonique et percussif avant détection d'onsets |
+| `USE_STRUCTURE_GUIDANCE` | segmentation couplet/refrain/pont (MFCC + clustering) pour orienter le lead |
+| `DETECT_FINISHES` | grosses notes sur crêtes spectrales larges — **ne produit encore rien**, voir « État actuel » |
+
+**`USE_ONSET_BACKTRACK` et `USE_ADAPTIVE_GRID` existent dans le code mais ne
+sont plus dans `NEW_GEN_FLAGS`** : mesurés, tous deux dégradaient le résultat
+(voir « État actuel »). Les drapeaux restent pour pouvoir les re-tester
+isolément.
 
 ### Combien de temps ça doit prendre
 
@@ -127,6 +149,35 @@ dans le rendu.
 
 Les maps de référence sont dans `F:\jsuisdansleclub\osumap\` (accessibles sous
 `/mnt/f/...` depuis WSL) et se ré-analysent à tout moment pour recalibrer.
+
+### Méthode de comparaison contre une map humaine
+
+Toutes les mesures ci-dessus viennent de la même technique, reproductible sur
+n'importe quelle map de `F:\jsuisdansleclub\osumap\` (`/mnt/f/...` sous WSL) :
+
+1. **Parser le `.osu`** : section `[HitObjects]`, une ligne par note au format
+   `x,y,temps_ms,type,hitsound,...`. `type & 8` = spinner (à ignorer,
+   ça n'a pas d'équivalent chez nous). `hitsound & 2` ou `& 8` = whistle/clap
+   → `KA` dans notre nomenclature, sinon → `DON`.
+2. **Densité et alternance** : compter les notes, calculer `notes / durée`,
+   et la longueur des séries consécutives d'une même couleur (médiane et max)
+   — c'est ce qui a révélé la règle « jamais plus de 4-5 notes de la même
+   couleur » citée plus haut.
+3. **Concordance temporelle, note à note** : pour chaque note générée, la
+   distance à la note humaine la plus proche (`|t_nous - t_humain|.min()`).
+   Le pourcentage de notes à moins de 25 ms est le chiffre le plus parlant.
+   **Piège évité** : comparer contre une grille théorique à BPM unique est
+   circulaire (ça valide nos propres paramètres, pas la musique) — une
+   beatmap réelle a souvent 250+ points de timing (tempo variable), la
+   comparaison doit se faire note à note, jamais contre une grille recalculée.
+4. **Quelle difficulté choisir comme référence** : comparer à la difficulté
+   dont la densité est la plus proche de la nôtre, sinon le taux de
+   concordance est mécaniquement tiré vers le haut par les difficultés les
+   plus denses (plus de notes humaines = plus de chances d'en trouver une
+   proche par pur hasard statistique, indépendamment de la justesse réelle).
+
+Aucun script n'a été conservé dans le dépôt — chaque mesure a été refaite à la
+volée. À écrire dans `pipeline/prototype/` si ce calibrage redevient fréquent.
 
 ### Règle d'isolation
 
@@ -257,6 +308,22 @@ for i in np.where(envelope > seuil)[0]:
 `np.where(condition)[0]` renvoie les indices où la condition est vraie : c'est
 l'outil de base pour interroger un tableau numpy sans le parcourir à la main.
 
+**Les valeurs par défaut des fonctions sont figées à l'import, pas à l'appel.**
+Beaucoup de fonctions du pipeline ont la forme
+`def f(..., sensitivity: float = config.ONSET_SENSITIVITY):` — c'est le cas de
+`TARGET_NOTES_PER_SECOND`, `ONSET_SENSITIVITY`, `MIN_NOTE_GAP_S` et d'autres.
+Python évalue ce défaut **une seule fois, à la définition de la fonction**
+(donc au premier `import chartgen`), pas à chaque appel. Modifier
+`config.TARGET_NOTES_PER_SECOND` en cours de script (pour balayer plusieurs
+valeurs sans relancer Python, par exemple) n'a **aucun effet** sur les appels
+qui utilisent ce défaut — piège rencontré en cherchant pourquoi une densité ne
+bougeait pas quel que soit le réglage testé. Deux façons de le contourner :
+relancer un process Python frais pour chaque valeur (ce que fait la CLI
+normalement), ou passer la valeur explicitement en argument nommé plutôt que
+compter sur le défaut. Les drapeaux booléens de `NEW_GEN_FLAGS` n'ont pas ce
+problème : ils sont lus en direct dans le corps des fonctions (`if
+config.USE_XXX:`), pas comme valeur par défaut.
+
 ## Équilibrage
 
 Une partition brute est rarement amusable du premier coup : c'est
@@ -320,3 +387,10 @@ La partition doit respecter le type `Chart` de
 [`client/src/chart/types.ts`](../client/src/chart/types.ts) : `version`, `title`,
 `audioUrl`, `durationMs`, `bpm`, `offsetMs`, et `notes` triées par `timeMs`
 croissant, chacune avec un type `DON` ou `KA`.
+
+Chaque note accepte aussi deux champs optionnels (absence = comportement par
+défaut, donc rétrocompatible avec les anciennes partitions) :
+- `durationMs` : note tenue (« slide »). Généré par `detect_holds` dans
+  `chart.py`, à partir des envolées détectées sur la piste vocale isolée.
+- `accent` : la note appartient à un moment fort (roulement, relance) — le
+  client l'auréole. Posé par `mark_accent_notes`.
